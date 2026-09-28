@@ -88,7 +88,9 @@ export class Batch {
     if (grp.verts > 400000) this._flush(key, grp);
     return g;
   }
+  register(name, material) { (this.custom ||= new Map()).set(name, material); }
   material(name, tint) {
+    if (this.custom?.has(name)) return this.custom.get(name);
     const base = this.game.materials.get(name);
     if (tint == null) return base;
     const k = name + '#' + tint;
@@ -108,8 +110,9 @@ export class Batch {
     grp.geos.forEach((g) => g.dispose());
     grp.geos = []; grp.verts = 0;
     merged.computeBoundingSphere(); merged.computeBoundingBox();
-    const mesh = new THREE.Mesh(merged, grp.matName instanceof THREE.Material ? grp.matName : this.material(grp.matName, grp.tint));
+    const mesh = new THREE.Mesh(merged, this.material(grp.matName, grp.tint));
     mesh.castShadow = grp.shadow; mesh.receiveShadow = true;
+    if (mesh.material.transparent) { mesh.castShadow = false; mesh.renderOrder = 1; }
     mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     if (grp.collider) { mesh.userData.collider = true; mesh.userData.surface = grp.surface; }
     mesh.name = `lvl:${key}`;
