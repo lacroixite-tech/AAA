@@ -1,0 +1,32 @@
+{
+  "name": "aaa",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "shot": "node scripts/shot.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lacroixite-tech/AAA.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lacroixite-tech/AAA/issues"
+  },
+  "homepage": "https://github.com/lacroixite-tech/AAA#readme",
+  "dependencies": {
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15"
+  },
+  "devDependencies": {
+    "playwright": "1.56",
+    "vite": "^8.3.1"
+  },
+  "type": "module"
+}
