@@ -1,5 +1,7 @@
 node_modules
 dist
-shots/*.png
+shots/**/*.png
+shots/**/*.wav
 !shots/reference/
 .DS_Store
+!shots/reference/**
