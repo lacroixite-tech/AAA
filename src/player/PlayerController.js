@@ -8,8 +8,8 @@ import * as THREE from 'three';
  * eyeHeight, moveSpeed01, dead, stance ('stand'|'crouch'|'prone').
  *
  * Hooks for weapons: recoilPitch / recoilYaw (radians, added to the camera every frame — weapons
- * owns & decays them), cameraShake(intensity 0..1), baseFov (vertical deg, from settings; final fov =
- * baseFov * weapons.fovMultiplier), sensitivity multiplier.
+ * owns & decays them), cameraShake(intensity 0..1), sensitivity multiplier. Camera fov is owned by
+ * weapons (baseFov * fovMultiplier); the HUD settings menu writes weapons.baseFov.
  *
  * Events emitted: player:footstep {surface, intensity}, player:jump, player:land {speed},
  * player:damaged {amount, fromPos}, player:died, player:respawn, player:slide, player:mantle {height}.
@@ -126,6 +126,7 @@ export class PlayerController {
     }
 
     if (this.dead) { this._updateDeath(dt); this.applyCamera(dt); return; }
+    if (this._shotPose) { this.poseForShot(this._shotPose); return; }
 
     // ---- look
     if (active) {
@@ -504,12 +505,6 @@ export class PlayerController {
     this._lean = this.leaning;
     this._trauma = Math.max(0, this._trauma - dt * 1.4);
 
-    // fov
-    const wf = g.weapons?.fovMultiplier ?? 1;
-    const sprintF = 1 + 0.045 * this._sprintBlend * (1 - (g.weapons?.adsAmount ?? 0));
-    const fov = this.baseFov * wf * sprintF;
-    if (Math.abs(fov - this._lastFov) > 1e-3) { g.camera.fov = fov; g.camera.updateProjectionMatrix(); this._lastFov = fov; }
-
     this.applyCamera(dt);
   }
 
@@ -570,7 +565,9 @@ export class PlayerController {
   }
 
   /** Deterministic pose for screenshot shots. state: 'slide'|'stand'|'crouch'|'prone'. */
-  poseForShot({ feet, yaw, pitch = 0, state = 'stand', lean = 0, bob = 0 }) {
+  poseForShot(pose) {
+    const { feet, yaw, pitch = 0, state = 'stand', lean = 0, bob = 0 } = pose;
+    this._shotPose = pose;
     this.position.set(feet[0], feet[1], feet[2]); this.velocity.set(0, 0, 0);
     this.yaw = yaw; this.pitch = pitch;
     this.sliding = state === 'slide';

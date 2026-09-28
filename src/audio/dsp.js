@@ -37,15 +37,17 @@ export function noiseData(n, color, r) {
   return d;
 }
 
+const NOISE_CACHE = new Map(); // AudioBuffers are context-independent: share across OfflineAudioContexts
 export function noiseBuffer(ctx, color = 'white') {
-  ctx.__noise ||= {};
-  if (!ctx.__noise[color]) {
+  const key = color + ctx.sampleRate;
+  let b = NOISE_CACHE.get(key);
+  if (!b) {
     const n = Math.floor(ctx.sampleRate * 2.5);
-    const b = ctx.createBuffer(1, n, ctx.sampleRate);
+    b = ctx.createBuffer(1, n, ctx.sampleRate);
     b.copyToChannel(noiseData(n, color, rng32(hashStr(color) ^ 0x9e3779b9)), 0);
-    ctx.__noise[color] = b;
+    NOISE_CACHE.set(key, b);
   }
-  return ctx.__noise[color];
+  return b;
 }
 
 /** Envelope gain: linear attack `a`, hold, then exponential decay with time-constant `tau`. */
@@ -91,7 +93,9 @@ export function noise(B, o) {
 /** Oscillator with optional pitch glide (f0 -> f1 with time-constant glide). */
 export function tone(B, o) {
   const { ctx } = B; const t0 = o.t0 ?? 0;
-  const osc = ctx.createOscillator(); osc.type = o.type || 'sine';
+  const osc = ctx.createOscillator();
+  if (o.cos) osc.setPeriodicWave(ctx.createPeriodicWave(new Float32Array([0, 1]), new Float32Array([0, 0]), { disableNormalization: true }));
+  else osc.type = o.type || 'sine';
   osc.frequency.setValueAtTime(o.f0, 0);
   if (o.f1 != null) osc.frequency.setTargetAtTime(o.f1, t0, o.glide || 0.03);
   if (o.vib) { const l = ctx.createOscillator(); l.frequency.value = o.vib[0]; const lg = ctx.createGain(); lg.gain.value = o.vib[1]; l.connect(lg); lg.connect(osc.frequency); l.start(t0); l.stop(Math.min(envEnd(t0, o.env), B.dur)); }
@@ -174,6 +178,16 @@ export function fadeEdges(buf, fadeOut = 0.03) {
   const n = Math.floor(buf.sampleRate * fadeOut);
   for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); const L = d.length; for (let i = 0; i < n && i < L; i++) d[L - 1 - i] *= i / n; }
   return buf;
+}
+/** Drop leading silence (keeps ~0.3 ms pre-roll) so one-shots fire with no latency. */
+export function trimStart(ctx, buf, rel = 0.003) {
+  let m = 0; const chs = []; for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); chs.push(d); for (let i = 0; i < d.length; i++) m = Math.max(m, Math.abs(d[i])); }
+  let first = buf.length; for (const d of chs) for (let i = 0; i < first; i++) if (Math.abs(d[i]) > m * rel) { first = i; break; }
+  const s0 = Math.max(0, first - Math.floor(buf.sampleRate * 0.0003));
+  if (s0 < 16) return buf;
+  const out = ctx.createBuffer(buf.numberOfChannels, buf.length - s0, buf.sampleRate);
+  for (let c = 0; c < chs.length; c++) out.getChannelData(c).set(chs[c].subarray(s0));
+  return out;
 }
 /** Make a seamless loop: crossfade the last `xf` seconds into the start, return a shorter buffer. */
 export function loopify(ctx, buf, xf = 2) {

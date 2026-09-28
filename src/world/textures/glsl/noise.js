@@ -90,13 +90,26 @@ vec4 vorCi(vec2 uv, float cell, float jit, float s, out vec2 id, out vec2 rel){ 
 float warpC(vec2 uv, float cell, int oct, float amt, float s){
   vec2 w = vec2(fbmC(uv, cell, 3, s + 11.0), fbmC(uv, cell, 3, s + 23.0));
   // warp by an integer number of periods is not required: warping the sample point keeps it periodic
-  return fbmC(fract(uv + w * amt), cell, oct, s);
+  return fbmC(uv + w * amt * 0.6 / FQ(cell), cell, oct, s);
 }
 // thin branching crack lines 0..1 (1 = in crack)
 float cracksC(vec2 uv, float cell, float width, float s){
   vec2 w = vec2(fbmC(uv, cell * 0.7, 3, s + 5.0), fbmC(uv, cell * 0.7, 3, s + 9.0)) * 0.35 / FQ(cell);
   float r = ridgedC(fract(uv + w), cell, 2, s);
   return smoothstep(1.0 - width, 1.0 - width * 0.25, r);
+}
+// jagged polygonal crack network 0..1. cell = crack spacing (m), width = crack width (m).
+// density 0..1 = fraction of voronoi edges that are cracked.
+float crackNet(vec2 uv, float cell, float width, float density, float s){
+  float f = FQ(cell); float cm = uSize / f;
+  vec2 w = vec2(fbmC(uv, cell * 0.6, 4, s + 1.0), fbmC(uv, cell * 0.6, 4, s + 2.0)) * 0.22 / f;
+  vec2 j = vec2(fbmC(uv, cell * 0.06, 3, s + 3.0), fbmC(uv, cell * 0.06, 3, s + 4.0)) * 0.03 / f;
+  vec4 v = voronoiF((uv + w + j) * f, vec2(f), 1.0, s);
+  float d = v.w * cm;
+  float wv = width * (0.35 + 0.9 * vnC(uv, cell * 0.25, s + 5.0));
+  float line = 1.0 - smoothstep(wv * 0.5, wv * 0.5 + max(width * 0.6, 0.0008), d);
+  float keep = smoothstep(1.0 - density - 0.08, 1.0 - density + 0.08, vnC(uv + w, cell * 0.5, s + 6.0));
+  return line * keep;
 }
 // vertical streaks (water run-off) 0..1
 float streaksC(vec2 uv, float wcell, float hcell, float s){

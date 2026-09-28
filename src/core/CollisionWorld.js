@@ -50,6 +50,13 @@ export class CollisionWorld {
     this.geometry = merged;
   }
 
+  /** Surface name for a BVH faceIndex (MeshBVH reorders the index buffer, so map back to the original triangle). */
+  surfaceAt(faceIndex) {
+    const idx = this.geometry?.index;
+    const tri = idx ? Math.floor(idx.getX(faceIndex * 3) / 3) : faceIndex;
+    return this.surfaceNames[this.surfaceByTri[tri]];
+  }
+
   addDynamic(obj) { this.dynamic.add(obj); }
   removeDynamic(obj) { this.dynamic.delete(obj); }
 
@@ -60,7 +67,7 @@ export class CollisionWorld {
     if (this.bvh) {
       const h = this.bvh.raycastFirst(ray, THREE.DoubleSide);
       if (h && h.distance <= far) {
-        best = { point: h.point, normal: h.face.normal.clone(), distance: h.distance, surface: this.surfaceNames[this.surfaceByTri[h.faceIndex]], object: null };
+        best = { point: h.point, normal: h.face.normal.clone(), distance: h.distance, surface: this.surfaceAt(h.faceIndex), object: null };
       }
     }
     if (dynamic && this.dynamic.size) {
