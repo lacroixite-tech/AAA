@@ -25,10 +25,10 @@ const SUN_DIR = new THREE.Vector3(
   Math.cos(SUN_ELEVATION) * Math.cos(SUN_AZIMUTH),
 ).normalize();
 const SUN_COLOR = new THREE.Color(1.0, 0.74, 0.5); // linear, golden hour
-const SUN_INTENSITY = 9.0;
+const SUN_INTENSITY = 10.0;
 const FOG_COLOR = new THREE.Color(0.40, 0.44, 0.50); // ambient haze (linear HDR) away from sun
 const FOG_SUN_COLOR = new THREE.Color(1.5, 0.95, 0.55); // inscatter toward sun
-const FOG_DENSITY = 0.0016; // per metre at ground level
+const FOG_DENSITY = 0.0028; // per metre at ground level
 const FOG_FALLOFF = 0.028; // height falloff (1/m)
 const FOG_BASE = 0.0;
 
@@ -167,7 +167,7 @@ vec3 skyBase( vec3 rd ) {
   col *= mix( 0.85, 1.1, az );
   // Mie aureole
   float m = max( mu, 0.0 );
-  col += uSunColor * ( 0.035 * pow( m, 4.0 ) + 0.12 * pow( m, 24.0 ) + 0.9 * pow( m, 380.0 ) );
+  col += uSunColor * ( 0.03 * pow( m, 4.0 ) + 0.07 * pow( m, 30.0 ) + 0.25 * pow( m, 400.0 ) + 1.2 * pow( m, 6000.0 ) );
   return col;
 }
 
@@ -188,7 +188,7 @@ vec4 clouds( vec3 rd, out float cirrusA ) {
   vec2 wind = vec2( 1.0, 0.35 ) * uTime * 0.004;
   vec2 q = p * 1.9 + wind;
   q += ( vec2( vnoise( q * 0.7 + 3.1 ), vnoise( q * 0.7 + 7.7 ) ) - 0.5 ) * 0.5;
-  float cov = uCoverage + 0.22 * ( fbm( q * 0.12 + 5.0, 2 ) - 0.4 );
+  float cov = uCoverage + 0.22 * ( fbm( q * 0.12 + 5.0, 2 ) - 0.4 ) + 0.3 * pow( max( mu, 0.0 ), 90.0 ); // keep a gap around the sun
   float dens = cloudDensity( q, cov );
   // self-shadowing: march toward the sun in layer space
   vec2 sdir = normalize( ENV_SUN_DIR.xz ) * 0.07;
@@ -207,9 +207,9 @@ vec4 clouds( vec3 rd, out float cirrusA ) {
   // cirrus: long thin streaks high up
   vec2 cq = rd.xz / ( rd.y + 0.25 );
   cq = mat2( 0.8, -0.6, 0.6, 0.8 ) * cq;
-  cq = cq * vec2( 0.8, 2.6 ) + vec2( uTime * 0.002, 0.0 );
+  cq = cq * vec2( 0.9, 1.7 ) + vec2( uTime * 0.002, 0.0 );
   float cn = fbm( cq + vec2( vnoise( cq * 0.4 ) * 2.0, 0.0 ), 5 );
-  cirrusA = smoothstep( 0.5, 0.9, cn ) * 0.16 * smoothstep( 0.03, 0.3, rd.y ) * ( 1.0 - a );
+  cirrusA = smoothstep( 0.52, 0.9, cn ) * 0.12 * smoothstep( 0.03, 0.3, rd.y ) * ( 1.0 - a );
   return vec4( col, a );
 }
 
@@ -291,15 +291,17 @@ ${NOISE_GLSL}
 float plume( vec2 uv ) {
   float y = uv.y;
   float bend = 0.4 + 0.3 * pow( y, 2.2 );
-  float width = 0.03 + 0.13 * pow( y, 0.75 );
+  float width = 0.045 + 0.2 * pow( y, 0.7 );
   float dx = ( uv.x - bend ) / width;
-  vec3 np = vec3( ( uv.x - bend ) * 11.0, uv.y * 10.0 - uTime * 0.08, uTime * 0.02 );
+  vec3 np = vec3( ( uv.x - bend ) * 16.0, uv.y * 15.0 - uTime * 0.12, uTime * 0.03 );
+  // large turbulent warp so the column breaks into distinct rolling puffs
+  np.x += ( vnoise3( np * 0.3 + 9.0 ) - 0.5 ) * 2.2;
   float n = fbm3( np, 5 );
-  float billow = 1.0 - abs( vnoise3( np * 1.7 + 4.0 ) * 2.0 - 1.0 );
-  float shape = exp( -dx * dx * 0.7 );
+  float billow = 1.0 - abs( vnoise3( np * 2.1 + 4.0 ) * 2.0 - 1.0 );
+  float shape = exp( -dx * dx * 0.55 );
   float d = shape * ( 0.7 + 1.5 * n + 0.35 * billow ) - 0.85;
-  d *= smoothstep( 1.0, 0.5, y ) * smoothstep( 0.0, 0.015, y );
-  return clamp( d * 3.0, 0.0, 1.0 );
+  d *= smoothstep( 0.92, 0.3, y ) * smoothstep( 0.0, 0.015, y );
+  return clamp( d * 2.2, 0.0, 1.0 );
 }
 void main() {
   float d = plume( vUv );
@@ -307,7 +309,7 @@ void main() {
   // lighting: sample toward the sun (projected on the billboard plane)
   vec2 sd = normalize( vec2( dot( ENV_SUN_DIR, uRight ), ENV_SUN_DIR.y ) + 1e-4 ) * 0.025;
   float ds = plume( vUv + sd ) + plume( vUv + sd * 2.0 );
-  float lit = exp( -ds * 1.3 );
+  float lit = exp( -ds * 1.6 );
   vec3 amb = vec3( 0.05, 0.052, 0.058 );
   vec3 col = amb * ( 1.0 - 0.4 * d ) + uSunColor * lit * lit * 0.018;
   col *= mix( vec3( 0.55, 0.5, 0.45 ), vec3( 1.0 ), smoothstep( 0.0, 0.3, vUv.y ) ); // sooty base
@@ -317,8 +319,9 @@ void main() {
   float dist = length( ray );
   vec3 rd = ray / dist;
   float fa = envFogAmount( cameraPosition, rd, dist, uFogDensity );
-  col = mix( col, envFogColor( rd, uFogColor ), fa * 0.8 );
-  gl_FragColor = vec4( col, smoothstep( 0.0, 0.45, d ) * 0.97 );
+  col = mix( col, envFogColor( rd, uFogColor ), fa * 0.45 );
+  col = mix( col, col * 1.6 + 0.02, smoothstep( 0.35, 0.8, vUv.y ) ); // thinner, lighter at the top
+  gl_FragColor = vec4( col, smoothstep( 0.0, 0.75, d ) * 0.96 );
 }`;
 
 // ---------------------------------------------------------------- cascaded sun shadow with custom split
@@ -468,7 +471,7 @@ export class Environment {
     const smoke = new THREE.Mesh(g, smokeMat);
     const smokeAz = SUN_AZIMUTH - 0.55; // off to the side of the sun
     smoke.position.set(Math.sin(smokeAz) * 700, -4, Math.cos(smokeAz) * 700);
-    smoke.scale.set(420, 420, 1);
+    smoke.scale.set(440, 520, 1);
     smoke.frustumCulled = false; smoke.renderOrder = 5; smoke.name = 'distantSmoke';
     s.add(smoke);
     this.smoke = smoke;
@@ -495,7 +498,7 @@ export class Environment {
     pm.dispose(); mat.dispose(); dome.geometry.dispose();
     this.envMap = rt.texture;
     this.game.scene.environment = this.envMap;
-    this.game.scene.environmentIntensity = 0.75;
+    this.game.scene.environmentIntensity = 0.7;
   }
 
   /** CPU mirror of the fog function (for sprites/fx that do their own fogging). */

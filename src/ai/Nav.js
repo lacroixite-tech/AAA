@@ -171,18 +171,22 @@ export class NavGraph {
     if (s === g) return [to.clone()];
     const N = this.nodes.length;
     const gS = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
-    const open = [s]; gS[s] = 0;
-    const f = (i) => gS[i] + this.nodes[i].distanceTo(this.nodes[g]);
+    const goal = this.nodes[g];
+    // binary heap keyed by f
+    const heap = [], fk = [];
+    const push = (i, f) => { heap.push(i); fk.push(f); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (fk[p] <= fk[c]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; [fk[p], fk[c]] = [fk[c], fk[p]]; c = p; } };
+    const pop = () => { const top = heap[0]; const li = heap.pop(), lf = fk.pop(); if (heap.length) { heap[0] = li; fk[0] = lf; let c = 0; for (;;) { const l = c * 2 + 1, r = l + 1; let m = c; if (l < heap.length && fk[l] < fk[m]) m = l; if (r < heap.length && fk[r] < fk[m]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; [fk[m], fk[c]] = [fk[c], fk[m]]; c = m; } } return top; };
+    gS[s] = 0; push(s, this.nodes[s].distanceTo(goal));
     let iter = 0;
-    while (open.length && iter++ < 4000) {
-      let bi = 0; for (let k = 1; k < open.length; k++) if (f(open[k]) < f(open[bi])) bi = k;
-      const cur = open.splice(bi, 1)[0];
+    while (heap.length && iter++ < 20000) {
+      const cur = pop();
+      if (closed[cur]) continue;
       if (cur === g) break;
       closed[cur] = 1;
       for (const nb of this.adj[cur]) {
         if (closed[nb]) continue;
         const ng = gS[cur] + this.nodes[cur].distanceTo(this.nodes[nb]);
-        if (ng < gS[nb]) { gS[nb] = ng; came[nb] = cur; if (!open.includes(nb)) open.push(nb); }
+        if (ng < gS[nb]) { gS[nb] = ng; came[nb] = cur; push(nb, ng + this.nodes[nb].distanceTo(goal)); }
       }
     }
     if (came[g] < 0) return [to.clone()];

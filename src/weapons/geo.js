@@ -1,5 +1,41 @@
 import * as THREE from 'three';
-import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/** Area-weighted creased normals (non-indexed): big flat faces stay flat next to small bevels. */
+export function toCreasedNormals(geo, crease) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  const p = g.attributes.position.array, n = p.length / 9;
+  const fn = new Float32Array(n * 3), fu = new Float32Array(n * 3);
+  const map = new Map(); const q = 1e5;
+  const key = (i) => `${Math.round(p[i] * q)},${Math.round(p[i + 1] * q)},${Math.round(p[i + 2] * q)}`;
+  for (let f = 0; f < n; f++) {
+    const o = f * 9;
+    const ax = p[o + 3] - p[o], ay = p[o + 4] - p[o + 1], az = p[o + 5] - p[o + 2];
+    const bx = p[o + 6] - p[o], by = p[o + 7] - p[o + 1], bz = p[o + 8] - p[o + 2];
+    const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
+    const l = Math.hypot(cx, cy, cz) || 1e-12;
+    fu[f * 3] = cx; fu[f * 3 + 1] = cy; fu[f * 3 + 2] = cz;
+    fn[f * 3] = cx / l; fn[f * 3 + 1] = cy / l; fn[f * 3 + 2] = cz / l;
+    for (let v = 0; v < 3; v++) { const k = key(o + v * 3); let a = map.get(k); if (!a) map.set(k, (a = [])); a.push(f); }
+  }
+  const out = new Float32Array(p.length); const c = Math.cos(crease);
+  for (let f = 0; f < n; f++) for (let v = 0; v < 3; v++) {
+    const o = f * 9 + v * 3; const list = map.get(key(o));
+    let x = 0, y = 0, z = 0;
+    const af = Math.hypot(fu[f * 3], fu[f * 3 + 1], fu[f * 3 + 2]);
+    for (const h of list) {
+      const d = fn[f * 3] * fn[h * 3] + fn[f * 3 + 1] * fn[h * 3 + 1] + fn[f * 3 + 2] * fn[h * 3 + 2];
+      if (d < c) continue;
+      // large faces ignore much smaller, non-coplanar neighbours (keeps big caps perfectly flat next to bevels)
+      if (d < 0.9999 && af > 6 * Math.hypot(fu[h * 3], fu[h * 3 + 1], fu[h * 3 + 2])) continue;
+      x += fu[h * 3]; y += fu[h * 3 + 1]; z += fu[h * 3 + 2];
+    }
+    const l = Math.hypot(x, y, z) || 1;
+    out[o] = x / l; out[o + 1] = y / l; out[o + 2] = z / l;
+  }
+  g.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  return g;
+}
 
 /**
  * Geometry helpers for hard-surface weapon modelling.
@@ -73,6 +109,7 @@ export function frontZ(sh, l, bevel = 0.001, bevelSegs = 2, curveSegs = 6) {
 }
 /** Lathe around the bore (Z) axis: pts = [[radius, s], ...] (s forward). */
 export function latheZ(pts, segs = 24, phiStart = 0, phiLength = Math.PI * 2) {
+  if (pts[pts.length - 1][1] < pts[0][1]) pts = pts.slice().reverse(); // keep outward winding
   const g = new THREE.LatheGeometry(pts.map(([r, s]) => new THREE.Vector2(Math.max(r, 1e-5), s)), segs, phiStart, phiLength);
   g.rotateX(-Math.PI / 2); // y -> -z  (s forward)
   return g;

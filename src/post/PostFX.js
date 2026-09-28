@@ -113,7 +113,7 @@ const COMPOSITE_FRAG = /* glsl */`
 uniform sampler2D tScene; uniform sampler2D tBloom; uniform sampler2D tBlur; uniform sampler2D tAO; uniform sampler2D tRays; uniform sampler2D tDirt; uniform sampler2D tDepth; uniform float uNear; uniform float uFar;
 uniform vec2 uRes; uniform float uTime; uniform float uExposure; uniform float uBloomMix; uniform float uDirt;
 uniform float uAO; uniform float uBloomNorm; uniform float uRaysI; uniform vec3 uRaysColor; uniform float uCA; uniform float uADS; uniform float uDamage; uniform float uFlash;
-uniform float uGrain; uniform float uVignette; uniform sampler2D tLuma; uniform float uAutoExp; uniform float uLumaRef; uniform float uFlare; uniform sampler2D tFlare; uniform float uDebug;
+uniform float uGrain; uniform float uVignette; uniform sampler2D tLuma; uniform float uAutoExp; uniform float uLumaRef; uniform float uFlare; uniform sampler2D tFlare; uniform float uDebug; uniform float uGlare;
 uniform vec3 uLift; uniform vec3 uGamma; uniform vec3 uGain; uniform float uSat; uniform float uContrast;
 varying vec2 vUv;
 float lum( vec3 c ) { return dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ); }
@@ -138,7 +138,10 @@ void main() {
   col.g = texture2D( tScene, uv ).g;
   col.b = texture2D( tScene, uv + caOff ).b;
   // ambient occlusion: full strength in dim/ambient areas, reduced on brightly sunlit pixels
-  float ao = texture2D( tAO, uv ).r;
+  float zb = texture2D( tDepth, uv ).x;
+  float vz = uNear * uFar / ( uFar - zb * ( uFar - uNear ) );
+  float ao = pow( texture2D( tAO, uv ).r, 1.6 );
+  ao = mix( ao, 1.0, smoothstep( 45.0, 90.0, vz ) );
   float l0 = lum( col );
   col *= mix( 1.0, ao, uAO * ( 1.0 - 0.55 * smoothstep( 0.4, 2.5, l0 ) ) );
   // ADS: peripheral defocus
@@ -147,10 +150,9 @@ void main() {
   // bloom (energy conserving) + lens dirt lit by bloom
   vec3 bloom = texture2D( tBloom, uv ).rgb * uBloomNorm;
   vec3 dirt = texture2D( tDirt, uv ).rgb;
-  col = mix( col, bloom, uBloomMix ) + max( bloom - 1.2, 0.0 ) * dirt * uDirt;
+  vec3 hot = max( bloom - 1.5, 0.0 );
+  col = mix( col, bloom, uBloomMix ) + hot * uGlare + hot * dirt * uDirt;
   // sun shafts: inscatter grows with view distance (near geometry barely receives any)
-  float zb = texture2D( tDepth, uv ).x;
-  float vz = uNear * uFar / ( uFar - zb * ( uFar - uNear ) );
   col += texture2D( tRays, uv ).rgb * uRaysColor * uRaysI * clamp( vz / 120.0, 0.08, 1.0 );
   // pseudo lens flare: ghosts + halo from the bright bloom, mirrored through the centre
   if ( uFlare > 0.0 ) {
@@ -170,7 +172,7 @@ void main() {
   }
   // exposure (manual * auto eye adaptation) + flash
   float avgL = exp( texture2D( tLuma, vec2( 0.5 ) ).r );
-  float auto_ = clamp( pow( uLumaRef / avgL, 0.5 ), 0.75, 1.6 );
+  float auto_ = clamp( pow( uLumaRef / avgL, 0.4 ), 0.8, 1.4 );
   col *= uExposure * mix( 1.0, auto_, uAutoExp ) * ( 1.0 + uFlash * 3.0 );
   // damage: desaturate + drain toward red at the edges (pre tonemap)
   float L = lum( col );
@@ -306,8 +308,8 @@ export class PostFX {
       uRes: { value: new THREE.Vector2(W, H) }, uTime: { value: 0 }, uExposure: { value: 1 }, uBloomMix: { value: 0.04 }, uDirt: { value: 0.3 },
       uAO: { value: 0.8 }, uBloomNorm: { value: 1 / 6 }, uRaysI: { value: 0 }, uRaysColor: { value: new THREE.Color(1.0, 0.75, 0.5) }, uCA: { value: 0.006 },
       uADS: { value: 0 }, uDamage: { value: 0 }, uFlash: { value: 0 }, uGrain: { value: 0.035 }, uVignette: { value: 0.35 },
-      uLift: { value: new THREE.Vector3(0.012, 0.016, 0.022) }, tLuma: { value: null }, uAutoExp: { value: 1 }, uLumaRef: { value: 0.19 }, uFlare: { value: 0.12 }, uDebug: { value: 0 }, tFlare: { value: null }, uGamma: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
-      uGain: { value: new THREE.Vector3(1.02, 1.0, 0.96) }, uSat: { value: 0.86 }, uContrast: { value: 1.08 },
+      uLift: { value: new THREE.Vector3(0.002, 0.005, 0.009) }, tLuma: { value: null }, uAutoExp: { value: 1 }, uLumaRef: { value: 0.19 }, uFlare: { value: 0.12 }, uDebug: { value: 0 }, uGlare: { value: 0.18 }, tFlare: { value: null }, uGamma: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
+      uGain: { value: new THREE.Vector3(1.02, 1.0, 0.96) }, uSat: { value: 0.86 }, uContrast: { value: 1.14 },
     });
     this.grade = this.compMat.uniforms; // tweakable
     this.smaa = new SMAAPass();
@@ -376,7 +378,7 @@ export class PostFX {
     const dm = this.downMat.uniforms, um = this.upMat.uniforms;
     let src = this.sceneRT.texture, sw = this.W, shh = this.H;
     for (let i = 0; i < this.bloomLevels; i++) {
-      dm.tSrc.value = src; dm.uTexel.value.set(1 / sw, 1 / shh); dm.uKaris.value = i === 0 ? 1 : 0;
+      dm.tSrc.value = src; dm.uTexel.value.set(1 / sw, 1 / shh); dm.uKaris.value = 0; dm.uClampMax.value = i === 0 ? 400 : 1e4;
       this._pass(this.downMat, this.down[i]);
       src = this.down[i].texture; sw = this.down[i].width; shh = this.down[i].height;
     }

@@ -54,7 +54,6 @@ function shootAt(game, from, pt) {
   const dir = pt.clone().sub(from).normalize();
   const h = game.collision.raycast(from, dir, 50, { dynamic: false });
   if (h) game.fx.spawnImpact(h.point, h.normal, h.surface, dir);
-  if (game.params?.get('dbg')) console.warn('DBG shoot', h && h.surface, h && h.distance.toFixed(2));
 }
 
 export default {
@@ -63,10 +62,10 @@ export default {
     setup(game, f) {
       const b = bay(game);
       const eye = b.base.clone().add(V(0, 1.62, 0)).addScaledVector(b.fwd, -0.6);
-      setCam(game, eye, eye.clone().addScaledVector(b.fwd, 4).add(V(0, -0.05, 0)));
+      setCam(game, eye, eye.clone().addScaledVector(b.fwd, 4).add(V(0, -0.3, 0)));
       if (f >= 56 && f <= 84 && (f - 56) % 7 === 0) {
         const cam = game.camera; const origin = cam.getWorldPosition(V()); const dir = cam.getWorldDirection(V());
-        game.events.emit('weapon:fire', { origin, dir, weapon: game.weapons?.current });
+        game.events.emit('weapon:fire', { origin, dir, weapon: { ...(game.weapons?.current || {}), tracerEvery: 1 } });
         shootAt(game, origin, origin.clone().addScaledVector(dir, 10).add(V((f % 3 - 1) * 0.15, (f % 2) * 0.1, 0)));
       }
       if (f === 84) game.fx.frozen = true;
@@ -105,7 +104,7 @@ export default {
       const eye = b.face.clone().addScaledVector(b.n, 2.6).addScaledVector(b.right, 0.3).add(V(0, 1.5, 0));
       setCam(game, eye, b.face.clone().addScaledVector(b.right, 0.5).add(V(0, 1.2, 0)));
       const gun = eye.clone().add(V(0.1, -0.2, 0));
-      if (f >= 4 && f < 60) {
+      if (f >= 2 && f < 44) {
         const r = game.fx.rand;
         for (let i = 0; i < 2; i++) {
           // recoil-climb spray pattern clusters
@@ -123,7 +122,7 @@ export default {
       const b = bay(game);
       const center = b.base.clone().addScaledVector(b.fwd, 2.4).addScaledVector(b.right, -1.5);
       const eye = b.base.clone().addScaledVector(b.fwd, -7).addScaledVector(b.right, -3).add(V(0, 1.65, 0));
-      setCam(game, eye, center.clone().add(V(0, 1.6, 0)));
+      setCam(game, eye, center.clone().addScaledVector(b.right, 2.6).add(V(0, 1.7, 0)));
       if (f === 66) game.fx.explosion(center);
       if (f === 66 + 13) game.fx.frozen = true;
     },
@@ -134,7 +133,7 @@ export default {
       const b = bay(game);
       const center = b.base.clone().addScaledVector(b.fwd, 2.4).addScaledVector(b.right, -1.5);
       const eye = b.base.clone().addScaledVector(b.fwd, -7).addScaledVector(b.right, -3).add(V(0, 1.65, 0));
-      setCam(game, eye, center.clone().add(V(0, 2.2, 0)));
+      setCam(game, eye, center.clone().addScaledVector(b.right, 2.6).add(V(0, 2.0, 0)));
       if (f === 10) game.fx.explosion(center);
       if (f === 88) game.fx.frozen = true;
     },

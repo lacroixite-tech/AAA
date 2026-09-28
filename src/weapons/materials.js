@@ -10,6 +10,15 @@ export const VM = {
   proj: { value: new THREE.Matrix4() },
 };
 
+/**
+ * Depth remap: the viewmodel is drawn with its own projection, but writes a depth equal to the camera
+ * projection's depth for a compressed distance (3.1 cm + 25% of its true distance, i.e. < 0.27 m).
+ * The player capsule keeps walls further than that, so the gun never clips, while depth-based post
+ * (GTAO, DOF, fog) still sees a plausible, correctly ordered depth for it.
+ */
+const VM_DEPTH_FN = /* glsl */`
+#define VM_DEPTH(mv) { float dw = 0.031 + (-(mv).z) * 0.25; gl_Position.z = ((projectionMatrix[2][2] * (-dw) + projectionMatrix[3][2]) / dw) * gl_Position.w; }
+`;
 const VM_PROJECT = /* glsl */`
 vec4 mvPosition = vec4( transformed, 1.0 );
 #ifdef USE_INSTANCING
@@ -18,7 +27,7 @@ vec4 mvPosition = vec4( transformed, 1.0 );
 mvPosition = modelViewMatrix * mvPosition;
 #ifdef VIEWMODEL
   gl_Position = vmProj * mvPosition;
-  gl_Position.z = gl_Position.z * 0.02 - 0.98 * gl_Position.w;
+  VM_DEPTH(mvPosition)
 #else
   gl_Position = projectionMatrix * mvPosition;
 #endif
@@ -79,7 +88,7 @@ export function gunMaterial(p, { vm = true, physical = false } = {}) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;\nvarying vec3 vObjPos; varying vec3 vObjNrm;')
+      .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;\nvarying vec3 vObjPos; varying vec3 vObjNrm;' + VM_DEPTH_FN)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position; vObjNrm = normal;')
       .replace('#include <project_vertex>', VM_PROJECT);
     sh.fragmentShader = sh.fragmentShader
@@ -130,7 +139,7 @@ export function vmBasic(params, vm = true) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.vmProj = VM.proj;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;')
+      .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;' + VM_DEPTH_FN)
       .replace('#include <project_vertex>', VM_PROJECT);
   };
   return mat;
@@ -146,7 +155,7 @@ export function patchVM(mat, vm = true) {
     prev?.call(mat, sh, r);
     sh.uniforms.vmProj = VM.proj;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;')
+      .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;' + VM_DEPTH_FN)
       .replace('#include <project_vertex>', VM_PROJECT);
   };
   return mat;
@@ -167,13 +176,14 @@ export function reticleMaterial(vm = true) {
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
     vertexShader: /* glsl */`
       uniform mat4 vmProj; varying vec3 vView; varying vec3 vAxis; varying vec3 vUp;
+      ${VM_DEPTH_FN}
       void main() {
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         vView = mv.xyz;
         vAxis = normalize((modelViewMatrix * vec4(0.0, 0.0, -1.0, 0.0)).xyz);
         vUp = normalize((modelViewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
         #ifdef VIEWMODEL
-          gl_Position = vmProj * mv; gl_Position.z = gl_Position.z * 0.02 - 0.98 * gl_Position.w;
+          gl_Position = vmProj * mv; VM_DEPTH(mv)
         #else
           gl_Position = projectionMatrix * mv;
         #endif
@@ -209,10 +219,10 @@ export function makeGunMaterials(vm = true) {
   const tex = weaponTextures();
   const o = { vm };
   const m = {
-    anod: gunMaterial({ name: 'anod', color: 0x19191a, roughness: 0.48, metalness: 0.25, wearColor: 0x8c8c89, wear: 1, grime: 0.55, scratch: 0.45, variation: 0.2, bump: 6.4e-05, micro: 0.35, detailMask: [0, 0, 1, 0] }, o),
+    anod: gunMaterial({ name: 'anod', color: 0x1a1a1b, roughness: 0.56, metalness: 0.25, wearColor: 0x8c8c89, wear: 1, grime: 0.55, scratch: 0.45, variation: 0.2, bump: 6.4e-05, micro: 0.35, detailMask: [0, 0, 1, 0] }, o),
     anodFlat: gunMaterial({ name: 'anodFlat', color: 0x1d1d1e, roughness: 0.62, metalness: 0.1, wearColor: 0x6f6f6c, wear: 0.8, grime: 0.6, scratch: 0.35, variation: 0.25, bump: 6.4e-05 }, o),
-    fde: gunMaterial({ name: 'fde', color: 0x7b6a52, roughness: 0.72, metalness: 0, wearColor: 0x9d8d73, wearRough: 0.55, wearMetal: 0, wear: 0.7, grime: 0.35, grimeColor: 0x4a4030, scratch: 0.3, variation: 0.12, bump: 7.2e-05, micro: 0.4, detailMask: [0, 0, 1, 0] }, o),
-    fdeStip: gunMaterial({ name: 'fdeStip', color: 0x75644c, roughness: 0.82, metalness: 0, wearColor: 0x9a896e, wearRough: 0.6, wearMetal: 0, wear: 0.6, grime: 0.4, grimeColor: 0x4a4030, scratch: 0.1, bump: 0.00028, detailScale: 22, detailMask: [1, 0, 0, 0], micro: 0.1 }, o),
+    fde: gunMaterial({ name: 'fde', color: 0x6f5d45, roughness: 0.62, metalness: 0, wearColor: 0x9d8d73, wearRough: 0.55, wearMetal: 0, wear: 0.7, grime: 0.35, grimeColor: 0x4a4030, scratch: 0.3, variation: 0.12, bump: 7.2e-05, micro: 0.4, detailMask: [0, 0, 1, 0] }, o),
+    fdeStip: gunMaterial({ name: 'fdeStip', color: 0x6a5942, roughness: 0.82, metalness: 0, wearColor: 0x9a896e, wearRough: 0.6, wearMetal: 0, wear: 0.6, grime: 0.4, grimeColor: 0x4a4030, scratch: 0.1, bump: 0.00028, detailScale: 22, detailMask: [1, 0, 0, 0], micro: 0.1 }, o),
     poly: gunMaterial({ name: 'poly', color: 0x151515, roughness: 0.68, metalness: 0, wearColor: 0x3a3a3a, wearRough: 0.5, wearMetal: 0, wear: 0.6, grime: 0.6, scratch: 0.35, bump: 7.2e-05 }, o),
     polyStip: gunMaterial({ name: 'polyStip', color: 0x171717, roughness: 0.8, metalness: 0, wearColor: 0x333333, wearRough: 0.55, wearMetal: 0, wear: 0.5, grime: 0.6, scratch: 0.05, bump: 0.00028, detailScale: 22, detailMask: [1, 0, 0, 0], micro: 0.1 }, o),
     steel: gunMaterial({ name: 'steel', color: 0x2c2b29, roughness: 0.42, metalness: 0.85, wearColor: 0xb9b6b0, wear: 1, wearRough: 0.22, grime: 0.5, scratch: 0.5, variation: 0.3, bump: 4.8e-05, detailMask: [0, 0, 0, 1], detailScale: 40 }, o),
@@ -220,10 +230,10 @@ export function makeGunMaterials(vm = true) {
     brass: gunMaterial({ name: 'brass', color: 0xc0924a, roughness: 0.3, metalness: 1, wearColor: 0xe0bd7c, wear: 0.4, wearRough: 0.2, grime: 0.35, grimeColor: 0x3c2a14, scratch: 0.2 }, o),
     copper: gunMaterial({ name: 'copper', color: 0xb06a40, roughness: 0.32, metalness: 1, wearColor: 0xd08a60, wear: 0.3, grime: 0.3, scratch: 0.1 }, o),
     rubber: gunMaterial({ name: 'rubber', color: 0x121212, roughness: 0.92, metalness: 0, wear: 0, grime: 0.7, scratch: 0, bump: 0.00016, detailScale: 60, detailMask: [0, 0, 1, 0] }, o),
-    glove: gunMaterial({ name: 'glove', color: 0x6c5b45, roughness: 0.9, metalness: 0, wearColor: 0x8a7a62, wearRough: 0.9, wearMetal: 0, wear: 0.5, edge: [120, 500], grime: 0.9, grimeColor: 0x2c251b, scratch: 0, bump: 9.6e-05, detailScale: 90, detailMask: [0, 1, 0, 0], micro: 0.15, variation: 0.25 }, o),
+    glove: gunMaterial({ name: 'glove', color: 0x6c5b45, roughness: 0.9, metalness: 0, wearColor: 0x8a7a62, wearRough: 0.9, wearMetal: 0, wear: 0.5, edge: [120, 500], grime: 0.9, grimeColor: 0x2c251b, scratch: 0, bump: 0.00012, detailScale: 65, detailMask: [0, 1, 0, 0], micro: 0.5, variation: 0.3 }, o),
     gloveDark: gunMaterial({ name: 'gloveDark', color: 0x1f1f1e, roughness: 0.75, metalness: 0, wearColor: 0x4a4a46, wearRough: 0.6, wearMetal: 0, wear: 0.7, edge: [150, 600], grime: 0.6, scratch: 0.2, bump: 0.00012, detailScale: 45, detailMask: [0, 0, 1, 0] }, o),
     glovePalm: gunMaterial({ name: 'glovePalm', color: 0x3b3328, roughness: 0.78, metalness: 0, wearColor: 0x5e5243, wearRough: 0.6, wearMetal: 0, wear: 0.6, edge: [120, 500], grime: 0.8, scratch: 0.1, bump: 0.00016, detailScale: 30, detailMask: [1, 0, 0, 0] }, o),
-    sleeve: gunMaterial({ name: 'sleeve', color: 0xffffff, roughness: 0.95, metalness: 0, wear: 0, grime: 0.6, grimeColor: 0x3a3226, scratch: 0, bump: 9.6e-05, detailScale: 70, detailMask: [0, 1, 0, 0], micro: 0.4, variation: 0.12, triMap: tex.camo, triMapScale: 4.5 }, o),
+    sleeve: gunMaterial({ name: 'sleeve', color: 0xffffff, roughness: 0.95, metalness: 0, wear: 0, grime: 0.6, grimeColor: 0x3a3226, scratch: 0, bump: 0.00014, detailScale: 38, detailMask: [0, 1, 0, 0], micro: 0.4, variation: 0.12, triMap: tex.camo, triMapScale: 4.5, extra: { side: THREE.DoubleSide } }, o),
     webbing: gunMaterial({ name: 'webbing', color: 0x4c4636, roughness: 0.95, metalness: 0, wear: 0, grime: 0.6, scratch: 0, bump: 0.00012, detailScale: 120, detailMask: [0, 1, 0, 0] }, o),
   };
   // Lens: faint amber/blue coating, reflective.

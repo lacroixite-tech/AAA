@@ -113,9 +113,9 @@ export function buildParticleAtlas(tileSize = 256) {
       const warpU = u + N.fbm(u * 1.3 + off, v * 1.3, 4) * 0.55, warpV = v + N.fbm(u * 1.3, v * 1.3 + off, 4) * 0.55;
       const rr = Math.hypot(warpU / stretch, warpV * (i === 2 ? 1.25 : 1));
       const b = billow(warpU / stretch, warpV, sc, off); // ~[-0.6, 1.1]
-      const base = Math.pow(clamp(1 - rr), 1.25);
+      const base = 1 - smooth(0.2, 0.98, rr);
       const wisp = i === 2 ? clamp(0.5 + N.ridged(warpU * 2.5 + off, warpV * 5, 4) * 0.8 - 0.6) : 0;
-      const d = clamp(base * (0.45 + b * 0.75 + wisp) * 1.35);
+      const d = clamp(base * (0.5 + b * 0.75 + wisp) * 1.6);
       return [d, clamp(0.45 + b * 0.55 + base * 0.2), base * 0.6 + b * 0.35 * base];
     }, { normalStrength: 2.2, sphere: 0.75 });
   });
@@ -123,7 +123,7 @@ export function buildParticleAtlas(tileSize = 256) {
   tile(3, (u, v, r) => {
     const wu = u + N.fbm(u * 1.5 + 3, v * 1.5, 3) * 0.4, wv = v + N.fbm(u * 1.5, v * 1.5 + 3, 3) * 0.4;
     const b = billow(wu, wv, 3.5, 5.5);
-    const base = Math.pow(clamp(1 - Math.hypot(wu, wv)), 1.4);
+    const base = 1 - smooth(0.15, 0.98, Math.hypot(wu, wv));
     const grain = N.noise(u * 60, v * 60) * 0.5 + N.noise(u * 25 + 3, v * 25) * 0.4;
     const d = clamp(base * (0.5 + b * 0.6 + grain * 0.5) * 1.3);
     return [d, clamp(0.55 + grain * 0.6 + b * 0.2), base * 0.6 + b * 0.3 * base];
@@ -171,7 +171,7 @@ export function buildParticleAtlas(tileSize = 256) {
   // 7 spark streak: head at +u, tail fades toward -u
   tile(7, (u, v) => {
     const t = (u + 1) / 2;
-    const core = Math.exp(-(v * v) / (0.012 + 0.03 * t));
+    const core = Math.exp(-(v * v) / (0.09 + 0.12 * t));
     const along = Math.pow(t, 1.4) * smooth(1.0, 0.85, t);
     return [clamp(core * along * 1.3), clamp(core * along * 1.1)];
   });
@@ -230,7 +230,7 @@ export function buildParticleAtlas(tileSize = 256) {
   // 15 tracer: long bright core, head brighter
   tile(15, (u, v) => {
     const t = (u + 1) / 2;
-    const core = Math.exp(-v * v / 0.004) + Math.exp(-v * v / 0.06) * 0.35;
+    const core = Math.exp(-v * v / 0.05) + Math.exp(-v * v / 0.3) * 0.3;
     const along = smooth(0, 0.35, t) * smooth(1, 0.94, t) * (0.35 + 0.65 * t);
     return [clamp(core * along), clamp(core * along)];
   });
@@ -293,7 +293,7 @@ export function buildDecalAtlas(tileSize = 256) {
     const cs = cracks(seed, 5, 0.85);
     return (u, v, r, th) => {
       const jag = N.fbm(Math.cos(th) * 2.5 + seed, Math.sin(th) * 2.5, 4);
-      const rh = 0.08 + jag * 0.03, rc = 0.34 + jag * 0.22, rs = 0.85 + jag * 0.1;
+      const rh = 0.09 + jag * 0.03, rc = 0.44 + jag * 0.22, rs = 0.9 + jag * 0.08;
       const chip = N.fbm(u * 14 + seed, v * 14, 4);
       const grain = N.noise(u * 70, v * 70);
       let h = 0, c, a;
@@ -302,7 +302,7 @@ export function buildDecalAtlas(tileSize = 256) {
       const depth = Math.pow(clamp(1 - r / rc), 0.8);
       h = -crater * (depth * 0.55 + chip * 0.25) - hole * 0.6;
       const fresh = [base[0] + chip * 0.15 + grain * 0.06, base[1] + chip * 0.15 + grain * 0.06, base[2] + chip * 0.14 + grain * 0.06];
-      const inner = mix(1, 0.45, depth); // darker deeper (AO)
+      const inner = mix(1.12, 0.5, depth * depth); // fresh bright chips at the rim, darker deeper (AO)
       c = [fresh[0] * inner, fresh[1] * inner, fresh[2] * inner];
       c = c.map((x) => mix(x, 0.035, hole));
       const soot = (1 - smooth(rc, rs, r)) * (1 - crater) * clamp(0.55 + N.fbm(u * 5 + seed, v * 5, 4) * 1.3);

@@ -51,7 +51,6 @@ export function buildGround(ctx) {
   }
   // road markings: dashed center, edge lines, zebra crossings, stop lines
   const paint = (x, z, w, d, m = 'paint_white', ry = 0) => B.add(FLAT(w, d), m, mat(x, 0.026, z, 0, ry), { collider: false, uvScale: 0.35, shadow: false });
-  for (let z = -EXT + 2; z < EXT; z += 6) if (Math.abs(z) > 12) paint(0, z, 0.14, 3);
   for (let x = -EXT + 2; x < EXT; x += 6) if (Math.abs(x) > 12) paint(x, 0, 3, 0.14);
   for (const s of [-1, 1]) {
     for (let k = 0; k < 7; k++) { paint(-5 + k * 1.65, s * 11.5, 0.6, 3.2); paint(s * 11.5, -5 + k * 1.65, 3.2, 0.6); }

@@ -288,6 +288,20 @@ export function headTextures(key, opts) {
       let col = 0.93 + 0.1 * loop * (1 - vshape * 0.5);
       const fuzz = n2(u * 32, v * 32, 32);
       col *= 0.9 + 0.2 * fuzz;
+      // fabric creases & cavity shading on the face (balaclava drapes over nose, mouth, chin and bunches at the neck)
+      const segD = (ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay; const t = Math.max(0, Math.min(1, ((u - ax) * dx + (v - ay) * dy) / (dx * dx + dy * dy))); return Math.hypot(u - ax - dx * t, (v - ay - dy * t)); };
+      let crease = 0;
+      for (const sgn of [-1, 1]) {
+        crease += Math.exp(-((segD(0.25 + sgn * 0.03, 0.44, 0.25 + sgn * 0.05, 0.37) / 0.012) ** 2)) * 0.35; // nasolabial
+        crease += Math.exp(-((segD(0.25 + sgn * 0.07, 0.46, 0.25 + sgn * 0.1, 0.4) / 0.014) ** 2)) * 0.2; // cheek fold
+      }
+      crease += Math.exp(-((segD(0.235, 0.31, 0.265, 0.31) / 0.006) ** 2)) * 0.5; // chin crease
+      const neck = smooth(0.26, 0.12, v) * (0.5 + 0.5 * Math.sin(v * 160 + Math.sin(u * 40) * 2)) ** 3;
+      crease += neck * 0.6;
+      const cav = Math.exp(-(((u - 0.25) / 0.02) ** 2) - (((v - 0.435) / 0.012) ** 2)) * 0.5 // under nose
+        + Math.exp(-(((u - 0.25) / 0.03) ** 2) - (((v - 0.39) / 0.008) ** 2)) * 0.35; // mouth line
+      col *= 1 - 0.35 * Math.min(1, crease) - cav;
+      h -= crease * 1.2;
       let r = kr * col, g = kg * col, b = kb * col, rg = 0.95;
       // eye opening (rounded band across both eyes)
       if (opts.open) {

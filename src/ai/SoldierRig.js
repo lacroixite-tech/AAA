@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BONES, BI, J } from './Skeleton.js';
 import { clamp, lerp, smooth, damp } from './util.js';
+import { wristFrame } from './Rifle.js';
 
 /**
  * Positional pose solver + procedural animator + verlet ragdoll for the soldier skeleton.
@@ -32,8 +33,9 @@ export class SoldierRig {
     this.p = BONES.map((b) => b.head.clone());
     this.scale = BONES.map(() => 1);
     this.magInHand = new THREE.Matrix4();
+    this.gripR = wristFrame(rifle.right, 'R'); this.gripL = wristFrame(rifle.left, 'L');
     // hand frame on magazine (weapon space) — same fist shape as a vertical grip
-    this.magGrip = { pos: rifle.magwell.clone().add(V(0.018, -0.055, -0.012)), dir: V(-0.05, -0.15, 1), front: V(0, 1, 0.15) };
+    this.magGrip = wristFrame({ grip: rifle.magwell.clone().add(V(0, -0.06, 0.012)), dir: V(0, -0.2, 1), front: V(0, 1, 0.2) }, 'L');
     const hw = this.frameMatrix(this.magGrip, BI.handL, new THREE.Matrix4());
     this.magInHand.copy(hw).invert();
   }
@@ -116,12 +118,13 @@ export class SoldierAnimator {
   constructor(rig, seed = 0) {
     this.rig = rig;
     this.vel = V(); this.crouch = 0; this.aimYaw = 0; this.aimPitch = 0; this.ads = 0; this.sprint = 0; this.lean = 0;
-    this.t = seed * 1.37; this.phase = seed % 1; this.moveBlend = 0; this.kneel = 0; this.lowReady = 1;
+    this.t = seed * 1.37; this.phase = seed % 1; this.seed = seed; this.moveBlend = 0; this.kneel = 0; this.lowReady = 1;
     this._crouch = 0; this._ads = 0; this._sprint = 0; this._lean = 0; this._aimYaw = 0; this._aimPitch = 0; this._vel = V();
     this.recoil = new Spring3(260, 18); this.chestFlinch = new Spring3(90, 9); this.headFlinch = new Spring3(140, 10);
     this.pelvisDip = new Spring3(80, 8); this.armJolt = new Spring3(120, 10);
     this.reloadT = -1; this.reloadDur = 2.6; this.magHidden = false;
     this.bladed = 1; // combat stance: left foot forward
+    this.lookAround = 1; // idle head scanning (0 = look straight along aim)
     this.feet = [V(), V()];
   }
   fire(kick = 1) {
@@ -134,6 +137,8 @@ export class SoldierAnimator {
     else if (part === 'limb') { this.armJolt.kick(d.clone().multiplyScalar(1.2)); this.pelvisDip.kick(V(0, -0.8, 0)); this.chestFlinch.kick(axis.multiplyScalar(3)); }
     else { this.chestFlinch.kick(axis.multiplyScalar(7)); this.pelvisDip.kick(V(0, -0.5, 0)); }
   }
+  /** jump smoothed inputs to their targets (used by deterministic screenshot poses) */
+  snap() { this._crouch = this.crouch; this._ads = this.ads; this._sprint = this.sprint; this._lean = this.lean; this._aimYaw = this.aimYaw; this._aimPitch = this.aimPitch; this.kneel = this.crouch > 0.5 && this.vel.length() < 0.4 ? 1 : 0; }
   startReload() { if (this.reloadT < 0) { this.reloadT = 0; } }
 
   update(dt) {
@@ -184,9 +189,12 @@ export class SoldierAnimator {
     const legYaw = mv * clamp(Math.abs(moveYaw) > Math.PI / 2 ? moveYaw - Math.sign(moveYaw) * Math.PI : moveYaw, -0.9, 0.9) * 0.5;
     const pelvisYaw = pelvisYawStance + legYaw + Math.sin(this.phase * Math.PI * 2) * 0.08 * mv;
     const pelvisPitch = 0.06 + 0.1 * run * mv + 0.25 * crouch * (1 - kneel) + 0.08 * kneel;
-    const pelvisRoll = Math.cos(this.phase * Math.PI * 2) * 0.04 * mv;
+    const pelvisRoll = Math.cos(this.phase * Math.PI * 2) * 0.04 * mv + Math.sin(this.t * 0.23 + (this.seed || 0) * 3.1) * 0.05 * (1 - mv) * (1 - this._ads * 0.7) * (1 - this.kneel);
     const sway = Math.sin(this.phase * Math.PI * 2) * 0.02 * mv;
-    R.p[BI.hips].set(sway, hipY, -0.03 * crouch * (1 - kneel) - 0.06 * kneel);
+    // idle life: slow weight shift between feet
+    const idle = (1 - mv) * (1 - this._ads * 0.7) * (1 - kneel);
+    const shift = Math.sin(this.t * 0.23 + this.seed * 3.1) * idle;
+    R.p[BI.hips].set(sway + shift * 0.025, hipY - Math.abs(shift) * 0.008, -0.03 * crouch * (1 - kneel) - 0.06 * kneel);
     const qPelvis = new THREE.Quaternion().setFromEuler(new THREE.Euler(pelvisPitch, pelvisYaw, pelvisRoll, 'YXZ'));
     R.orient(BI.hips, V(0, 1, 0).applyQuaternion(qPelvis), V(0, 0, 1).applyQuaternion(qPelvis));
 
@@ -232,13 +240,16 @@ export class SoldierAnimator {
 
     // ---- neck/head: look along aim, cheek weld when ADS
     const hf = this.headFlinch.x;
-    const qHead = new THREE.Quaternion().setFromEuler(new THREE.Euler(-aimPitch + 0.36 * wA + hf.x * 0.1 + 0.05 * (1 - wA), aimYaw * 1.0 + hf.y * 0.1 - 0.06 * wA, 0.3 * wA + hf.z * 0.1, 'YXZ'));
+    const look = (1 - wA) * (1 - sprint);
+    const lookYaw = (Math.sin(this.t * 0.37 + this.seed * 5) * 0.45 + Math.sin(this.t * 0.11 + this.seed) * 0.25) * look * this.lookAround;
+    const lookPitch = Math.sin(this.t * 0.29 + this.seed * 2) * 0.08 * look * this.lookAround;
+    const qHead = new THREE.Quaternion().setFromEuler(new THREE.Euler(-aimPitch + 0.36 * wA + hf.x * 0.1 + 0.05 * (1 - wA) + lookPitch, aimYaw * 1.0 + hf.y * 0.1 - 0.06 * wA + lookYaw, 0.3 * wA + hf.z * 0.1, 'YXZ'));
     const qNeck = qChest.clone().slerp(qHead, 0.5).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12 * wA, 0, 0)));
     R.orient(BI.neck, V(0, 1, 0).applyQuaternion(qNeck), V(0, 0, 1).applyQuaternion(qNeck));
     R.fk(BI.head); R.orient(BI.head, V(0, 1, 0).applyQuaternion(qHead), V(0, 0, 1).applyQuaternion(qHead));
 
     // ---- arms
-    const gripR = this.rig.rifle.right, gripL = this.rig.rifle.left;
+    const gripR = this.rig.gripR, gripL = this.rig.gripL;
     const tR = gripR.pos.clone().applyMatrix4(wM);
     let tL = gripL.pos.clone().applyMatrix4(wM);
     const dirL = gripL.dir.clone().transformDirection(wM), frL = gripL.front.clone().transformDirection(wM);
@@ -373,6 +384,11 @@ export class Ragdoll {
     C('shoulderL', 'shoulderR'); C('hipL', 'hipR'); C('shoulderL', 'hipR', 0.25); C('shoulderR', 'hipL', 0.25);
     L('hips', 'neck', 0.4); L('head', 'chest', 0.2); L('nose', 'chest', 0.2); L('hips', 'chest', 0.26);
     C('butt', 'muzzle');
+    // muscle tone: extra shape-keeping links that fade out (body slumps instead of dropping like a puppet)
+    const T = (a, b, st) => { const ia = PI_[a], ib = PI_[b]; this.cons.push([ia, ib, this.x[ia].distanceTo(this.x[ib]), st, 3]); };
+    for (const k of ['L', 'R']) { T('hip' + k, 'ankle' + k, 0.25); T('shoulder' + k, 'wrist' + k, 0.35); T('chest', 'knee' + k, 0.2); T('spine', 'elbow' + k, 0.3); }
+    T('hips', 'head', 0.3); T('hips', 'neck', 0.4); T('kneeL', 'kneeR', 0.2);
+    this.tone = part === 'head' ? 0.25 : 0.55; // headshots go limp almost instantly
     // initial velocities (per step displacement)
     const dt = 1 / 60;
     for (let i = 0; i < this.x.length; i++) {
@@ -412,19 +428,41 @@ export class Ragdoll {
         x.x += vx; x.y += vy + g * h * h; x.z += vz;
       }
       // weapon held briefly in right hand
+      if (this.t >= this.holdWeapon && !this.released) {
+        this.released = true;
+        const m = this.x[PI_.muzzle]; const side = _a.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+        this.prev[PI_.muzzle].addScaledVector(side, -0.02);
+        void m;
+      }
       if (this.t < this.holdWeapon) {
         const w = this.x[PI_.wristR], b = this.x[PI_.butt];
         const m = this.x[PI_.muzzle]; const off = V().subVectors(w, b).multiplyScalar(0.5);
         b.add(off); m.add(off);
       }
       for (let it = 0; it < 6; it++) {
-        for (const [a, b, rest, st, mode] of this.cons) {
+        const toneK = Math.max(0, 1 - this.t / this.tone);
+        for (const [a, b, rest, st0, mode] of this.cons) {
+          let st = st0;
+          if (mode === 3) { if (toneK <= 0) continue; st *= toneK; }
           const pa = this.x[a], pb = this.x[b];
           _d.subVectors(pb, pa); const d = _d.length() || 1e-6;
           if (mode === 1 && d >= rest) continue;
           if (mode === 2 && d <= rest) continue;
           const diff = ((d - rest) / d) * 0.5 * st;
           pa.addScaledVector(_d, diff); pb.addScaledVector(_d, -diff);
+        }
+        // knee hinge: knees may not bend backwards relative to the pelvis front
+        {
+          const hl = this.x[PI_.hipL], hr = this.x[PI_.hipR], sp = this.x[PI_.spine], hp = this.x[PI_.hips];
+          _e.subVectors(hl, hr); _c.subVectors(sp, hp); const front = _b.crossVectors(_e, _c).normalize();
+          for (const k of ['L', 'R']) {
+            const H = this.x[PI_['hip' + k]], K = this.x[PI_['knee' + k]], A = this.x[PI_['ankle' + k]];
+            _a.subVectors(A, H); const l2 = _a.lengthSq() || 1e-6;
+            const t = _c.subVectors(K, H).dot(_a) / l2;
+            const off = _c.subVectors(K, H).addScaledVector(_a, -t);
+            const f = off.dot(front);
+            if (f < 0.02) K.addScaledVector(front, (0.02 - f) * 0.8);
+          }
         }
         // ground
         for (let i = 0; i < n; i++) {

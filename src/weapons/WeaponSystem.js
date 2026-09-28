@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeGunMaterials, VM } from './materials.js';
 import { buildRifle, buildMag } from './models/rifle.js';
 import { buildPistol } from './models/pistol.js';
-import { Hand, Forearm, addWatch } from './arms.js';
+import { Hand, Forearm } from './arms.js';
 
 /**
  * Weapons + first-person viewmodel. Owner: weapons agent.
@@ -65,15 +65,15 @@ const DEFS = {
     spread: { hip: 2.6 * DEG, ads: 0.08 * DEG, move: 2.0 * DEG, bloom: 0.45 * DEG, bloomMax: 3.5 * DEG, recover: 7 },
     recoil: {
       back: 0.022, rise: 0.045, side: 0.012, roll: 0.03, adsScale: 0.55,
-      cam: [0.0085, 0.0028], // vertical, horizontal (rad per shot)
+      cam: [0.0058, 0.0022], // vertical, horizontal (rad per shot)
       pattern: [[1, 0.2], [1.1, 0.5], [1.2, -0.3], [1.1, 0.8], [1.3, 0.6], [1.2, -0.5], [1.0, -0.9], [1.1, -0.4], [0.9, 0.7], [1.0, 1.0], [0.8, 0.3], [0.9, -0.8]],
       recover: 5.5,
     },
     reload: { tac: 2.25, empty: 2.85 },
     adsTime: 0.24, zoom: 1.32, vmFov: 54, vmFovAds: 34,
-    hip: { p: [0.088, -0.092, -0.17], r: [0.02, 0.06, -0.07] },
+    hip: { p: [0.1, -0.092, -0.21], r: [0.045, 0.1, -0.1] },
     ads: { eye: 0.15, sightS: 0.042, sightY: 0.0635 },
-    sprint: { p: [0.035, -0.125, -0.09], r: [-0.28, 0.72, 0.52] },
+    sprint: { p: [0.085, -0.1, -0.21], r: [-0.3, 0.42, -0.12] },
     elbowR: [0.3, -0.4, 0.12], elbowL: [-0.3, -0.36, -0.12],
   },
   pistol: {
@@ -86,7 +86,7 @@ const DEFS = {
     },
     reload: { tac: 1.65, empty: 2.05 },
     adsTime: 0.17, zoom: 1.15, vmFov: 54, vmFovAds: 44,
-    hip: { p: [0.062, -0.058, -0.19], r: [0.05, 0.1, -0.03] },
+    hip: { p: [0.04, -0.042, -0.165], r: [0.12, 0.1, -0.04] },
     ads: { eye: 0.27, sightS: 0.004, sightY: 0.0205 },
     sprint: { p: [0.05, -0.16, -0.2], r: [-0.75, 0.25, 0.25] },
     elbowR: [0.2, -0.42, 0.04], elbowL: [-0.14, -0.42, 0.02],
@@ -111,9 +111,9 @@ function riflePoses() {
   P.lBelow = { p: P.lMag.p.clone().add(V3(-0.06, -0.26, 0.08)), q: P.lMag.q.clone(), f: P.lMag.f, t: P.lMag.t };
   P.lInsert = { p: P.lMag.p.clone().add(V3(0, -0.035, 0.0)), q: P.lMag.q.clone(), f: P.lMag.f, t: P.lMag.t };
   // charging handle: hand above-left-rear, fingers hooking the T-handle latch
-  P.lCh = handPose([-0.03, 0.03, 0.0], [0.8, -0.3, 0.3], [-0.3, 0.3, 0.9], FIST(1.2, 1.3, 0.8), { depth: 0.045, off: 0.022 });
-  P.lCh.t = [-0.3, 0.5, 0, 0.3, 0.2];
-  P.lChPulled = { p: P.lCh.p.clone().add(V3(0, 0.002, 0.065)), q: P.lCh.q, f: P.lCh.f, t: P.lCh.t };
+  P.lCh = handPose([-0.016, 0.014, 0.016], [1, 0.1, 0], [0, 0.35, 1], FIST(1.35, 1.35, 0.8), { depth: 0.045, off: 0.02 });
+  P.lCh.t = [0, 0, 0, 0.4, 0.3]; P.lCh.tw = [0.2, -0.6, -0.8]; P.lCh.elbow = [0.02, -0.5, -0.05];
+  P.lChPulled = { p: P.lCh.p.clone().add(V3(0, 0.002, 0.065)), q: P.lCh.q, f: P.lCh.f, t: P.lCh.t, tw: P.lCh.tw, elbow: P.lCh.elbow };
   return P;
 }
 
@@ -122,10 +122,10 @@ function pistolPoses() {
   P.rGrip = handPose([0.0165, -0.078, Z(0.012)], [0, -0.25, -0.97], [1, 0.3, 0], {
     index: [0.6, 0.9, 0.4, 0.05], middle: [1.45, 1.55, 0.8, 0], ring: [1.5, 1.55, 0.8, 0], pinky: [1.5, 1.45, 0.75, -0.05],
   }, { depth: 0.05, off: 0.021 });
-  P.rGrip.t = [0, 0, 0, 0.1, 0.05]; P.rGrip.tw = [-0.35, 0.1, -0.93];
+  P.rGrip.t = [0, 0, 0, 0.1, 0.05]; P.rGrip.tw = [-0.12, 0.02, -1];
   // support hand wraps over the right-hand fingers from the left
-  P.lGrip = handPose([-0.022, -0.095, Z(0.03)], [0.5, -0.1, -0.85], [-1, -0.2, 0.2], FIST(1.25, 1.35, 0.8), { depth: 0.05, off: 0.021 });
-  P.lGrip.t = [0, 0, 0, 0.05, 0.05]; P.lGrip.tw = [0.05, 0.15, -1];
+  P.lGrip = handPose([-0.019, -0.074, Z(0.012)], [0.45, -0.3, -0.85], [-1, -0.35, 0.1], FIST(1.25, 1.35, 0.8), { depth: 0.05, off: 0.021 });
+  P.lGrip.t = [0, 0, 0, 0.05, 0.05]; P.lGrip.tw = [0.1, 0.06, -1];
   P.lBelow = { p: P.lGrip.p.clone().add(V3(-0.05, -0.28, 0.05)), q: P.lGrip.q.clone(), f: FIST(1.1, 1.2, 0.8), t: P.lGrip.t };
   P.lMag = handPose([-0.005, -0.16, Z(0.0)], [0.6, 0.2, -0.3], [-0.3, -0.9, 0.2], FIST(1.2, 1.3, 0.7), { depth: 0.045, off: 0.022 });
   P.lMag.t = [-0.3, 0.5, 0, 0.3, 0.2];
@@ -140,6 +140,9 @@ function blendPose(a, b, t, out) {
     const fa = a.f[k] || a.f.all, fb = b.f[k] || b.f.all; out.f[k] = out.f[k] || [0, 0, 0, 0];
     for (let i = 0; i < 4; i++) out.f[k][i] = lerp(fa[i] || 0, fb[i] || 0, t);
   }
+  const ea = a.elbow || null, eb = b.elbow || null;
+  out.elbow = ea || eb ? V3(...(ea || [0, 0, 0])).lerp(V3(...(eb || [0, 0, 0])), t).toArray() : null;
+  out.elbowW = (ea ? 1 - t : 0) + (eb ? t : 0);
   out.tw = a.tw && b.tw ? a.tw.map((v, i) => lerp(v, b.tw[i], t)) : (t < 0.5 ? a.tw : b.tw);
   out.t = out.t || [0, 0, 0, 0, 0];
   for (let i = 0; i < 5; i++) out.t[i] = lerp(a.t[i], b.t[i], t);
@@ -164,14 +167,17 @@ function sampleVec(keys, t) {
 function rifleReload(empty) {
   const D = empty ? DEFS.rifle.reload.empty : DEFS.rifle.reload.tac;
   const hand = [[0, 'lGuard'], [0.26, 'lMag'], [0.42, 'lMag'], [0.62, 'lInsert'], [0.86, 'lBelow'], [1.12, 'lBelow'], [1.36, 'lInsert'], [1.5, 'lMag'], [1.56, 'lMag']];
-  const wr = [[0, [0, 0, 0, 0, 0, 0]], [0.28, [0.1, 0.12, 0.42, -0.03, 0.02, 0.03]], [0.5, [0.09, 0.14, 0.46, -0.03, 0.025, 0.03]], [0.9, [0.12, 0.16, 0.38, -0.02, 0.01, 0.02]],
-    [1.34, [0.1, 0.12, 0.42, -0.03, 0.02, 0.03]], [1.46, [0.14, 0.12, 0.44, -0.03, 0.03, 0.03]], [1.58, [0.08, 0.1, 0.4, -0.03, 0.018, 0.03]]];
+  // [rx, ry, rz, px, py, pz] offsets: pitch up, yaw muzzle-left, cant, raise
+  const T = [0.22, 0.22, -0.42, -0.05, 0.05, 0.01];
+  const wr = [[0, [0, 0, 0, 0, 0, 0]], [0.3, T], [0.5, [0.24, 0.24, -0.46, -0.05, 0.052, 0.012]], [0.9, [0.2, 0.2, -0.38, -0.045, 0.045, 0.01]],
+    [1.34, [0.22, 0.22, -0.44, -0.05, 0.05, 0.01]], [1.46, [0.26, 0.22, -0.46, -0.05, 0.058, 0.01]], [1.58, [0.2, 0.2, -0.4, -0.048, 0.046, 0.01]]];
   if (!empty) {
     hand.push([1.9, 'lGuard'], [D, 'lGuard']);
-    wr.push([1.95, [0.02, 0.02, 0.05, 0, 0, 0]], [D, [0, 0, 0, 0, 0, 0]]);
+    wr.push([1.95, [0.03, 0.03, -0.05, -0.005, 0.005, 0]], [D, [0, 0, 0, 0, 0, 0]]);
   } else {
+    const C = [0.25, 0.75, -0.3, -0.05, 0.03, -0.1];
     hand.push([1.8, 'lCh'], [1.9, 'lCh'], [2.04, 'lChPulled'], [2.12, 'lChPulled'], [2.5, 'lGuard'], [D, 'lGuard']);
-    wr.push([1.8, [0.02, -0.12, -0.22, -0.01, 0.01, 0.0]], [2.04, [0.05, -0.14, -0.25, -0.01, 0.02, 0.01]], [2.14, [-0.03, -0.1, -0.2, -0.01, 0.0, 0.0]], [2.55, [0, 0, 0.02, 0, 0, 0]], [D, [0, 0, 0, 0, 0, 0]]);
+    wr.push([1.8, C], [2.04, [0.28, 0.78, -0.32, -0.05, 0.035, -0.095]], [2.14, [0.22, 0.72, -0.27, -0.05, 0.025, -0.1]], [2.55, [0.02, 0.03, -0.03, 0, 0, 0]], [D, [0, 0, 0, 0, 0, 0]]);
   }
   return {
     D, hand, wr, attach: [0.4, 1.46], swap: 0.95, refill: 1.46, slap: 1.48,
@@ -182,8 +188,8 @@ function rifleReload(empty) {
 function pistolReload(empty) {
   const D = empty ? DEFS.pistol.reload.empty : DEFS.pistol.reload.tac;
   const hand = [[0, 'lGrip'], [0.22, 'lBelow'], [0.62, 'lBelow'], [0.88, 'lInsert'], [1.02, 'lMag'], [1.08, 'lMag'], [1.36, 'lGrip'], [D, 'lGrip']];
-  const wr = [[0, [0, 0, 0, 0, 0, 0]], [0.2, [0.22, -0.18, -0.35, -0.02, 0.015, 0.02]], [0.9, [0.25, -0.2, -0.38, -0.02, 0.02, 0.02]], [1.04, [0.3, -0.18, -0.34, -0.02, 0.028, 0.02]],
-    [1.12, [0.2, -0.16, -0.32, -0.02, 0.012, 0.02]], [empty ? 1.5 : 1.4, [0.05, -0.05, -0.1, 0, 0, 0]], [D, [0, 0, 0, 0, 0, 0]]];
+  const wr = [[0, [0, 0, 0, 0, 0, 0]], [0.2, [0.33, -0.18, -0.35, -0.02, 0.05, 0.02]], [0.9, [0.375, -0.2, -0.38, -0.02, 0.055, 0.02]], [1.04, [0.45, -0.18, -0.34, -0.02, 0.063, 0.02]],
+    [1.12, [0.3, -0.16, -0.32, -0.02, 0.047, 0.02]], [empty ? 1.5 : 1.4, [0.075, -0.05, -0.1, 0, 0.035, 0]], [D, [0, 0, 0, 0, 0, 0]]];
   return { D, hand, wr, attach: [0.62, 1.03], drop: [0.18, 0.5], swap: 0.6, refill: 1.03, slap: 1.03, slideRelease: empty ? 1.3 : null, bump: empty ? [1.04, 1.3] : [1.04] };
 }
 
@@ -211,7 +217,6 @@ export class WeaponSystem {
     // hands (weapon space, re-parented under the current weapon group) + forearms (viewmodel space)
     this.rHand = new Hand(this.mats, 'right'); this.lHand = new Hand(this.mats, 'left');
     this.rArm = new Forearm(this.mats, 3); this.lArm = new Forearm(this.mats, 7);
-    addWatch(this.lArm, this.mats);
     this.viewmodel.add(this.rArm.root, this.lArm.root);
     this.lPose = newPose(); this.rPose = newPose();
 
@@ -331,8 +336,8 @@ export class WeaponSystem {
     // --- movement: sway, bob, jump/land
     const mdx = inp.mouse.dx || 0, mdy = inp.mouse.dy || 0;
     const swayK = 1 - this.adsAmount * 0.8;
-    this.swaySpring.v.x += clamp(-mdy * 0.0009, -0.05, 0.05) * swayK * 60 * dt * 10;
-    this.swaySpring.v.y += clamp(-mdx * 0.0009, -0.05, 0.05) * swayK * 60 * dt * 10;
+    this.swaySpring.v.x += clamp(mdy * 0.0009, -0.05, 0.05) * swayK * 60 * dt * 10;
+    this.swaySpring.v.y += clamp(mdx * 0.0009, -0.05, 0.05) * swayK * 60 * dt * 10;
     this.swaySpring.update(dt);
     if (p) {
       const hv = Math.hypot(p.velocity.x, p.velocity.z);
@@ -487,7 +492,7 @@ export class WeaponSystem {
       const bt = this.boltT < 1 ? Math.sin(Math.min(1, this.boltT) * Math.PI) : 0;
       M.bolt.position.z = bt * 0.028;
       M.bolt.visible = this.dustOpen > 0;
-      M.dust.rotation.z = -Math.min(1, this.dustOpen) * 1.95;
+      M.dust.rotation.z = -Math.min(1, this.dustOpen) * 2.85;
       let chv = 0;
       if (this.reloading && this.reloadScript && this.reloadScript.ch) chv = sampleVec(this.reloadScript.ch.map(([a, b]) => [a, [b]]), this.reloadT)[0];
       M.ch.position.z = chv * 0.062;
@@ -552,7 +557,7 @@ export class WeaponSystem {
     // ---- forearms + FX anchors
     this.viewmodel.updateMatrixWorld(true);
     this._placeArm(this.rArm, this.rHand, def.elbowR);
-    this._placeArm(this.lArm, this.lHand, def.elbowL);
+    this._placeArm(this.lArm, this.lHand, lp.elbow ? V3(...def.elbowL).lerp(V3(...lp.elbow).divideScalar(Math.max(lp.elbowW, 1e-3)), Math.min(1, lp.elbowW)).toArray() : def.elbowL);
     const k = Math.tan(cam.fov * DEG / 2) / Math.tan(vmFov * DEG / 2);
     const tmp = V3();
     M.muzzle.getWorldPosition(tmp); cam.worldToLocal(tmp); this.muzzleObject.position.set(tmp.x * k, tmp.y * k, tmp.z);
@@ -638,7 +643,7 @@ export class WeaponSystem {
     const mats = makeGunMaterials(false);
     if (this._fallbackEnv) for (const m of Object.values(mats)) if (m.isMeshStandardMaterial) { m.envMap = this._fallbackEnv; }
     const r = buildRifle(mats, { forWorld: true });
-    r.dust.rotation.z = -1.95; r.bolt.visible = true;
+    r.dust.rotation.z = -2.85; r.bolt.visible = true;
     const grp = new THREE.Group(); grp.add(r.group);
     grp.position.copy(pos); grp.rotation.y = rotY;
     this.game.scene.add(grp);

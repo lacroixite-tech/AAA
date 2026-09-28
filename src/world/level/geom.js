@@ -62,49 +62,92 @@ export function jitter(geo, amt, r) {
   return g;
 }
 
+class Buf {
+  constructor(T, n = 4096) { this.T = T; this.a = new T(n); this.n = 0; }
+  reserve(k) { if (this.n + k > this.a.length) { let m = this.a.length * 2; while (m < this.n + k) m *= 2; const b = new this.T(m); b.set(this.a.subarray(0, this.n)); this.a = b; } }
+  view() { return this.a.slice(0, this.n); }
+}
+class Stream {
+  constructor(color) { this.pos = new Buf(Float32Array); this.nor = color !== null ? new Buf(Float32Array) : null; this.uv = color !== null ? new Buf(Float32Array) : null; this.col = color ? new Buf(Float32Array) : null; this.idx = new Buf(Uint32Array); this.verts = 0; }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos.view(), 3));
+    if (this.nor) g.setAttribute('normal', new THREE.BufferAttribute(this.nor.view(), 3));
+    if (this.uv) g.setAttribute('uv', new THREE.BufferAttribute(this.uv.view(), 2));
+    if (this.col) g.setAttribute('color', new THREE.BufferAttribute(this.col.view(), 3));
+    const iv = this.idx.view();
+    g.setIndex(new THREE.BufferAttribute(this.verts > 65535 ? iv : Uint16Array.from(iv), 1));
+    return g;
+  }
+}
+const _nm = new THREE.Matrix3(), _c = new THREE.Color(), _bc = new THREE.Vector3();
+const IDENT = new THREE.Matrix4();
+
 /**
  * Batches static geometry by material key and merges into few draw calls.
- * Each add() transforms the geometry to world space and (optionally) generates world-meter UVs.
+ * Geometry is streamed straight into per-group typed arrays (transformed to world space, world-meter UVs,
+ * tint as vertex color) — no per-piece clones. Visual groups = material x coarse spatial cell;
+ * colliders are streamed separately per surface into invisible meshes.
  */
 export class Batch {
   constructor(game) {
     this.game = game; this.groups = new Map(); this.variants = new Map(); this.colGroups = new Map(); this.meshes = [];
     this.cellSize = 80;
   }
-  /**
-   * opts: { collider=true, surface, uv:'world'|'keep', uvScale, uo, vo, tint }
-   * Visuals are merged per (material, spatial cell) with tints baked into vertex colors;
-   * colliders are merged separately per surface into invisible meshes.
-   */
+  /** opts: { collider=true, surface, uv:'world'|'keep', uvScale, uo, vo, tint } */
   add(geo, matName, matrix, opts = {}) {
-    let g = geo.clone();
-    if (matrix) g.applyMatrix4(matrix);
-    if (!g.attributes.normal) g.computeVertexNormals();
-    if (opts.uv !== 'keep' || !g.attributes.uv) worldUV(g, opts.uvScale || 1, opts.uo || 0, opts.vo || 0);
-    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
-    if (!g.index) { const n = g.attributes.position.count; const idx = n > 65535 ? new Uint32Array(n) : new Uint16Array(n); for (let i = 0; i < n; i++) idx[i] = i; g.setIndex(new THREE.BufferAttribute(idx, 1)); }
-    g.clearGroups();
+    const M = matrix || IDENT;
+    if (!geo.attributes.normal) geo.computeVertexNormals();
+    const P = geo.attributes.position, N = geo.attributes.normal, U = geo.attributes.uv;
+    const n = P.count, index = geo.index;
+    const e = M.elements;
+    _nm.getNormalMatrix(M); const ne = _nm.elements;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    geo.boundingBox.getCenter(_bc).applyMatrix4(M);
+    const cs = this.cellSize, cl = (v) => Math.max(-1, Math.min(1, Math.floor((v + cs / 2) / cs)));
+    const key = `${matName}|${cl(_bc.x)},${cl(_bc.z)}`;
     const custom = this.custom?.has(matName);
-    if (!custom) {
-      const c = new THREE.Color(opts.tint ?? 0xffffff); const n = g.attributes.position.count;
-      const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    let grp = this.groups.get(key);
+    if (!grp) { grp = { matName, s: new Stream(custom ? false : true), key }; this.groups.set(key, grp); }
+    const S = grp.s; const base = S.verts;
+    S.pos.reserve(n * 3); S.nor.reserve(n * 3); S.uv.reserve(n * 2); if (S.col) S.col.reserve(n * 3);
+    const pa = S.pos.a, na = S.nor.a, ua = S.uv.a;
+    let po = S.pos.n, uo = S.uv.n;
+    const keepUV = opts.uv === 'keep' && U; const sc = opts.uvScale || 1, ou = opts.uo || 0, ov = opts.vo || 0;
+    for (let i = 0; i < n; i++) {
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+      const wx = e[0] * x + e[4] * y + e[8] * z + e[12], wy = e[1] * x + e[5] * y + e[9] * z + e[13], wz = e[2] * x + e[6] * y + e[10] * z + e[14];
+      const a = N.getX(i), b = N.getY(i), c = N.getZ(i);
+      let nx = ne[0] * a + ne[3] * b + ne[6] * c, ny = ne[1] * a + ne[4] * b + ne[7] * c, nz = ne[2] * a + ne[5] * b + ne[8] * c;
+      const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+      pa[po] = wx; pa[po + 1] = wy; pa[po + 2] = wz; na[po] = nx; na[po + 1] = ny; na[po + 2] = nz; po += 3;
+      if (keepUV) { ua[uo] = U.getX(i); ua[uo + 1] = U.getY(i); }
+      else {
+        const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz); let u, v;
+        if (ay >= ax && ay >= az) { u = wx; v = wz; } else if (ax >= az) { u = nx > 0 ? -wz : wz; v = wy; } else { u = nz > 0 ? wx : -wx; v = wy; }
+        ua[uo] = u * sc + ou; ua[uo + 1] = v * sc + ov;
+      }
+      uo += 2;
     }
+    S.pos.n = po; S.nor.n = po; S.uv.n = uo;
+    if (S.col) {
+      _c.set(opts.tint ?? 0xffffff); const ca = S.col.a; let co = S.col.n;
+      for (let i = 0; i < n; i++) { ca[co] = _c.r; ca[co + 1] = _c.g; ca[co + 2] = _c.b; co += 3; }
+      S.col.n = co;
+    }
+    const ni = index ? index.count : n;
+    S.idx.reserve(ni); const ia = S.idx.a; let io = S.idx.n;
+    if (index) for (let i = 0; i < ni; i++) ia[io++] = index.getX(i) + base; else for (let i = 0; i < ni; i++) ia[io++] = i + base;
+    S.idx.n = io; S.verts += n;
     if (opts.collider !== false) {
       const surface = opts.surface || defaultSurface(matName);
-      const cg = new THREE.BufferGeometry(); cg.setAttribute('position', g.attributes.position); cg.setIndex(g.index);
-      let cgp = this.colGroups.get(surface); if (!cgp) this.colGroups.set(surface, cgp = []);
-      cgp.push(cg);
+      let C = this.colGroups.get(surface); if (!C) this.colGroups.set(surface, C = new Stream(null));
+      const cb = C.verts; C.pos.reserve(n * 3); C.pos.a.set(pa.subarray(po - n * 3, po), C.pos.n); C.pos.n += n * 3;
+      C.idx.reserve(ni); const ca = C.idx.a; let co = C.idx.n;
+      for (let i = 0; i < ni; i++) ca[co++] = ia[S.idx.n - ni + i] - base + cb;
+      C.idx.n = co; C.verts += n;
     }
-    g.computeBoundingBox(); const bb = g.boundingBox;
-    const cs = this.cellSize, cl = (v) => Math.max(-1, Math.min(1, Math.floor((v + cs / 2) / cs)));
-    const cell = `${cl((bb.min.x + bb.max.x) / 2)},${cl((bb.min.z + bb.max.z) / 2)}`;
-    const key = `${matName}|${cell}`;
-    let grp = this.groups.get(key);
-    if (!grp) { grp = { matName, geos: [], verts: 0 }; this.groups.set(key, grp); }
-    grp.geos.push(g); grp.verts += g.attributes.position.count;
-    if (grp.verts > 300000) this._flush(key, grp);
-    return g;
+    if (S.verts > 400000) this._flush(grp, true);
   }
   register(name, material) { (this.custom ||= new Map()).set(name, material); }
   /** Material for a batch group: custom level materials, or a vertex-colored clone of the library material. */
@@ -138,43 +181,44 @@ export class Batch {
     }
     return m;
   }
-  _flush(key, grp) {
-    if (!grp.geos.length) return;
-    const merged = mergeGeometries(grp.geos, false);
-    grp.geos.forEach((g) => g.dispose());
-    grp.geos = []; grp.verts = 0;
-    merged.computeBoundingSphere(); merged.computeBoundingBox();
-    const mesh = new THREE.Mesh(merged, this.vcMaterial(grp.matName));
-    mesh.castShadow = !mesh.material.transparent && !mesh.material.alphaTest; mesh.receiveShadow = true;
-    if (mesh.material.transparent) mesh.renderOrder = 1;
-    if (mesh.material.alphaTest) mesh.castShadow = true;
+  _flush(grp, reset) {
+    if (!grp.s.verts) return;
+    const geo = grp.s.geometry();
+    geo.computeBoundingSphere(); geo.computeBoundingBox();
+    const mesh = new THREE.Mesh(geo, this.vcMaterial(grp.matName));
+    const mt = mesh.material;
+    mesh.castShadow = !mt.transparent; mesh.receiveShadow = true;
+    if (mt.transparent) mesh.renderOrder = 1;
     mesh.matrixAutoUpdate = false; mesh.updateMatrix();
-    mesh.name = `lvl:${key}`;
+    mesh.name = `lvl:${grp.key}`;
     (this.root || this.game.scene).add(mesh);
     this.meshes.push(mesh);
+    if (reset) grp.s = new Stream(grp.s.col ? true : false);
   }
   build(root) {
     this.root = root;
     // small materials: merge all their cells into one draw call
-    const tot = new Map();
-    for (const g of this.groups.values()) tot.set(g.matName, (tot.get(g.matName) || 0) + g.verts);
-    for (const [k, g] of [...this.groups]) {
-      if (tot.get(g.matName) < 40000 && !k.endsWith('|all')) {
-        const ak = g.matName + '|all'; let a = this.groups.get(ak);
-        if (!a) this.groups.set(ak, a = { matName: g.matName, geos: [], verts: 0 });
-        a.geos.push(...g.geos); a.verts += g.verts; this.groups.delete(k);
+    const byMat = new Map();
+    for (const g of this.groups.values()) { if (!byMat.has(g.matName)) byMat.set(g.matName, []); byMat.get(g.matName).push(g); }
+    for (const [name, list] of byMat) {
+      const tot = list.reduce((a, g) => a + g.s.verts, 0);
+      if (tot < 40000 && list.length > 1) {
+        const target = list[0]; target.key = name + '|all';
+        for (const g of list.slice(1)) {
+          const S = g.s, T = target.s, base = T.verts;
+          for (const k of ['pos', 'nor', 'uv', 'col']) if (T[k]) { T[k].reserve(S[k].n); T[k].a.set(S[k].a.subarray(0, S[k].n), T[k].n); T[k].n += S[k].n; }
+          T.idx.reserve(S.idx.n); for (let i = 0; i < S.idx.n; i++) T.idx.a[T.idx.n++] = S.idx.a[i] + base;
+          T.verts += S.verts; this.groups.delete(g.key);
+        }
       }
     }
-    for (const [k, g] of this.groups) this._flush(k, g);
-    for (const [surface, list] of this.colGroups) {
-      for (let i = 0; i < list.length; i += 4000) {
-        const merged = mergeGeometries(list.slice(i, i + 4000), false);
-        const m = new THREE.Mesh(merged, PROXY_MAT); m.visible = false; m.matrixAutoUpdate = false;
-        m.userData.collider = true; m.userData.surface = surface; m.name = 'lvl:col:' + surface;
-        root.add(m);
-      }
+    for (const g of this.groups.values()) this._flush(g, false);
+    for (const [surface, C] of this.colGroups) {
+      const m = new THREE.Mesh(C.geometry(), PROXY_MAT); m.visible = false; m.matrixAutoUpdate = false;
+      m.userData.collider = true; m.userData.surface = surface; m.name = 'lvl:col:' + surface;
+      root.add(m);
     }
-    this.colGroups.clear();
+    this.colGroups.clear(); this.groups.clear();
     return this.meshes;
   }
 }

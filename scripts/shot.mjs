@@ -13,7 +13,7 @@ if (!names.length) names.push('overview');
 const W = +(opt.w || 1600), H = +(opt.h || 900), out = opt.out || 'shots';
 fs.mkdirSync(out, { recursive: true });
 
-const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error', clearScreen: false });
+const server = await createServer({ server: { port: 0, host: '127.0.0.1', hmr: false, watch: { ignored: ['**/*'] } }, logLevel: 'error', clearScreen: false });
 await server.listen();
 const url = server.resolvedUrls.local[0];
 const exe = fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome') ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined;

@@ -11,14 +11,15 @@ export function registerLevelMaterials(batch) {
   R('decal_streak', decal(0x17130f, T.streakTex(5), { opacity: 0.85 }));
   R('decal_streak_rust', decal(0x4a2412, T.streakTex(6), { opacity: 0.7 }));
   R('decal_soot', decal(0x080706, T.sootTex(), { opacity: 0.95 }));
-  R('decal_stain', decal(0x14120f, T.stainTex(3), { opacity: 0.9 }));
-  R('decal_oil', decal(0x050505, T.stainTex(4), { roughness: 0.25, opacity: 0.9 }));
+  R('decal_stain', decal(0x14120f, T.stainTex(3), { opacity: 0.75 }));
+  R('decal_oil', decal(0x050505, T.stainTex(4), { roughness: 0.3, opacity: 0.8 }));
   R('decal_dirt', decal(0x3a3024, T.stainTex(7), { opacity: 1 }));
+  R('pavers', decal(0x2a2622, T.paverTex(), { opacity: 0.85 }));
   R('paint_white', decal(0xc9c6bb, T.paintWear(), { opacity: 0.8, roughness: 0.8 }));
   R('paint_yellow', decal(0xb8962e, T.paintWear(), { opacity: 0.75, roughness: 0.8 }));
   R('puddle', new THREE.MeshStandardMaterial({
-    color: 0x0d0f10, roughness: 0.03, metalness: 0.1, alphaMap: T.puddleTex(9), transparent: true, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8, envMapIntensity: 1.6,
+    color: 0x030405, roughness: 0.04, metalness: 0.0, alphaMap: T.puddleTex(9), transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8, envMapIntensity: 0.9,
   }));
   for (let i = 0; i < 6; i++) R('curtain' + i, new THREE.MeshStandardMaterial({ map: T.curtainTex(i), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95 }));
   for (let i = 0; i < T.SIGN_COUNT; i++) R('sign' + i, new THREE.MeshStandardMaterial({ map: T.signTex(i), roughness: 0.7, metalness: 0.1 }));
@@ -29,6 +30,7 @@ export function registerLevelMaterials(batch) {
   R('grass_card', new THREE.MeshStandardMaterial({ map: T.grassTex(false), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9 }));
   R('grass_dry', new THREE.MeshStandardMaterial({ map: T.grassTex(true), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9 }));
   R('leaf_card', new THREE.MeshStandardMaterial({ map: T.leafTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 }));
+  for (const [i, c] of [0x3a4a3a, 0x5a3a2a, 0x2e3440].entries()) R('railing' + i, new THREE.MeshStandardMaterial({ color: c, map: T.railingTex(), alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.55 }));
   R('void', new THREE.MeshStandardMaterial({ color: 0x060606, roughness: 1 }));
   R('backdrop', new THREE.MeshStandardMaterial({ color: 0x8a8278, map: T.backdropWindowTex(), roughness: 1 }));
   R('backdrop_plain', new THREE.MeshStandardMaterial({ color: 0x6e6862, roughness: 1 }));

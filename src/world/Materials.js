@@ -197,8 +197,20 @@ export class Materials {
     this.cache = new Map();  // key -> material
     const q = game.quality || 'high';
     this.resScale = q === 'low' ? 0.5 : 1;
+    // Software rasteriser (headless screenshot harness): bake at half resolution to keep load fast,
+    // except for the material review shots.
+    if (isSoftwareGL(game.renderer) && !(game.shotName || '').startsWith('mat')) this.resScale *= 0.5;
     const texParam = game.params?.get?.('tex');
     if (texParam) this.resScale = +texParam;
+    // Baking is queued and executed on animation frames (all at once on a real GPU; one per frame on a
+    // software rasteriser so page load / other systems are never blocked). flush() forces it.
+    this._pump = () => {
+      if (!this.baker.pending) { this._pumping = false; return; }
+      this.baker.run(this._sw ? 0 : 250);
+      if (this.baker.pending) requestAnimationFrame(this._pump);
+      else { this._pumping = false; this.baker.disposeTemps(); console.info(`[Materials] baked ${this.sets.size} materials in ${this.baker.totalMs.toFixed(0)} ms`); }
+    };
+    this._sw = isSoftwareGL(game.renderer);
     this._warned = new Set();
   }
 
@@ -218,6 +230,7 @@ export class Materials {
       const rc = RECIPES[name];
       const res = Math.max(128, Math.round((RES_STEPS[rc.res] || 1024) * this.resScale));
       set = this.baker.bake(name, rc, res);
+      if (!this._pumping) { this._pumping = true; requestAnimationFrame(this._pump); }
       for (const t of [set.map, set.normal, set.orm]) t.repeat.set(1 / rc.size, 1 / rc.size);
       this.sets.set(name, set);
     }
@@ -227,8 +240,12 @@ export class Materials {
   /** Tile size in meters of a material's texture. */
   tileSize(name) { return RECIPES[this.resolve(name)].size; }
 
-  /** Bake every material up-front (optional; get() bakes lazily). */
-  preload(names = this.names) { for (const n of names) this.get(n); this.baker.disposeTemps(); }
+  /** Queue every material for baking (get() bakes lazily otherwise). */
+  preload(names = this.names) { for (const n of names) this.get(n); }
+  /** Synchronously execute all queued bakes (normally they run on the next animation frames). */
+  flush() { this.baker.flush(); }
+  /** True when no bakes are pending. */
+  get ready() { return !this.baker.pending; }
 
   get(name, opts = {}) {
     const n = this.resolve(name);
@@ -251,7 +268,8 @@ export class Materials {
     const paint = paintSrc == null ? null : (Array.isArray(paintSrc) ? new THREE.Color().setRGB(...paintSrc, THREE.SRGBColorSpace) : new THREE.Color(paintSrc));
     const pbr = {
       name, size: rc.size, scale: rep, macro, triplanar: opts.triplanar ?? !!rc.triplanar,
-      paint: paint ? [paint.r, paint.g, paint.b] : null, groundY: opts.groundY ?? 0,
+      paint: paint ? paint.clone().multiplyScalar(1 / new THREE.Color().setRGB(rc.paintRef ?? 0.8, 0, 0, THREE.SRGBColorSpace).r).toArray() : null,
+      groundY: opts.groundY ?? 0,
     };
     let mat;
     const common = {
@@ -281,6 +299,15 @@ export class Materials {
     mat.userData.surface = SURFACE[name] || 'concrete';
     return mat;
   }
+}
+
+function isSoftwareGL(renderer) {
+  try {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const r = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    return /swiftshader|llvmpipe|software/i.test(String(r));
+  } catch { return false; }
 }
 
 /** Impact/footstep surface class for each material (for userData.surface). */

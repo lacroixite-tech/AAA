@@ -66,11 +66,11 @@ function palmGeo() {
 
 function sleeveGeo(len = 0.34, r0 = 0.037, r1 = 0.05, seed = 1) {
   // Tube along +Z (wrist -> elbow), elliptical, with cloth folds and a rolled cuff near the wrist.
-  const radial = 40, rings = 44;
+  const radial = 40, rings = 90;
   const pos = [], idx = [];
   let s = seed;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  const folds = Array.from({ length: 7 }, () => ({ z: 0.04 + rnd() * (len - 0.06), a: rnd() * 6.28, amp: 0.002 + rnd() * 0.003, w: 0.01 + rnd() * 0.015 }));
+  const folds = Array.from({ length: 14 }, () => ({ z: 0.03 + rnd() * (len - 0.05), a: rnd() * 6.28, amp: 0.003 + rnd() * 0.005, w: 0.006 + rnd() * 0.012, tw: (rnd() - 0.5) * 30 }));
   for (let j = 0; j <= rings; j++) {
     const t = j / rings, z = t * len;
     let R = r0 + (r1 - r0) * Math.pow(t, 0.8);
@@ -80,7 +80,7 @@ function sleeveGeo(len = 0.34, r0 = 0.037, r1 = 0.05, seed = 1) {
     for (let i = 0; i <= radial; i++) {
       const a = (i / radial) * Math.PI * 2;
       let rr = R;
-      for (const f of folds) rr += f.amp * Math.exp(-Math.pow((z - f.z) / f.w, 2)) * Math.pow(Math.max(0, Math.cos(a - f.a)), 2) * (0.5 + 0.5 * Math.sin(a * 5 + f.a * 3));
+      for (const f of folds) { const zz = z - f.z - Math.sin(a - f.a) * f.tw * 0.001; rr += f.amp * Math.exp(-Math.pow(zz / f.w, 2)) * (0.35 + 0.65 * Math.pow(Math.max(0, Math.cos(a - f.a)), 2)); }
       rr += 0.0008 * Math.sin(a * 11 + z * 90) * t;
       pos.push(Math.cos(a) * rr * 1.08, Math.sin(a) * rr * 0.9, z);
     }
@@ -174,6 +174,9 @@ export class Forearm {
     this.root = new THREE.Group();
     const s = mesh(sleeveGeo(0.36, 0.036, 0.05, seed), mats.sleeve);
     s.position.z = 0.03; this.root.add(s);
+    // rolled cuff lip so the sleeve opening has thickness
+    const lip = new THREE.TorusGeometry(0.0375, 0.0055, 10, 40); lip.scale(1.1, 0.92, 1.1);
+    const lm = mesh(lip, mats.sleeve); lm.position.z = 0.031; this.root.add(lm);
     // glove cuff tail visible under the sleeve edge
     const under = new THREE.CylinderGeometry(0.035, 0.035, 0.05, 24, 1, true); under.rotateX(Math.PI / 2); under.scale(1.04, 0.82, 1); under.translate(0, 0, 0.035);
     this.root.add(mesh(under, mats.glove));

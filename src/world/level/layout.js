@@ -206,7 +206,12 @@ export function buildLayout(ctx) {
   P.rubble(ctx, -9.2, -9.4, { rx: 2, rz: 1.8, h: 0.9, seed: 54, chunks: 30 });
 
   // ------------------------------------------------------------------ NE plaza
-  patch(ctx, 10, 46, -46, -10.2, 'tiles', 0.15);
+  patch(ctx, 10, 46, -46, -10.2, 'concrete', 0.15, 0xb4b0a8);
+  B.add(new THREE.PlaneGeometry(36, 35.8).rotateX(-HP), 'pavers', mat(28, 0.152, -28.1), { collider: false, uvScale: 0.5 });
+  // granite border band + bollards around the square
+  for (const [x0, x1, z0, z1] of [[10, 46, -10.8, -10.2], [10.2, 10.8, -46, -10.2]]) B.add(box(x1 - x0, 0.04, z1 - z0), 'concrete_dark', mat((x0 + x1) / 2, 0.16, (z0 + z1) / 2), { collider: false, tint: 0x8a8680 });
+  for (let t = 12; t < 45; t += 3.2) { if (Math.abs(t - 28) < 3) continue; B.add(cyl(0.11, 0.13, 0.8, 8), 'concrete', mat(t, 0.55, -10.9), { collider: false, tint: 0xa8a49c }); B.add(cyl(0.11, 0.13, 0.8, 8), 'concrete', mat(10.9, 0.55, -t), { collider: false, tint: 0xa8a49c }); }
+  for (const [x, z] of [[20, -20], [36, -36], [36, -20], [20, -36]]) P.streetLamp(ctx, x, z, Math.atan2(28 - x, 28 - z) + PI, { h: 5.5, broken: x === 36 && z === -36 });
   for (let i = 0; i < 18; i++) B.add(new THREE.PlaneGeometry(2 + r() * 3, 2 + r() * 3).rotateX(-HP), r() < 0.5 ? 'decal_dirt' : 'decal_stain', mat(12 + r() * 32, 0.155, -44 + r() * 32, 0, r() * 6), { collider: false, uv: 'keep', shadow: false });
   monument(ctx, 28, -28, r);
   for (const [x, z] of [[16, -16], [40, -16], [16, -40], [40, -40], [28, -14.5], [28, -42], [14, -28], [43, -28]]) {

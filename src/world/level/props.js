@@ -159,7 +159,7 @@ export function bus(ctx, x, z, yaw, { burnt = true, seed = 3 } = {}) {
 let _bagGeo = null;
 function bagGeo() {
   if (_bagGeo) return _bagGeo;
-  const g = new THREE.BoxGeometry(0.62, 0.17, 0.36, 4, 2, 2);
+  const g = new THREE.BoxGeometry(0.62, 0.17, 0.36, 2, 1, 2);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -427,23 +427,32 @@ export function panelFence(ctx, a, b, { skip = [], seed = 5, lean = [] } = {}) {
 // ---------------------------------------------------------------- nature
 export function tree(ctx, x, z, { seed = 1, h = 8, leaves = 0.35 } = {}) {
   const r = rng(seed); const B = ctx.batch; const leafPts = [];
+  const up = new THREE.Vector3(0, 1, 0);
   const grow = (p, dir, len, rad, depth) => {
-    const end = p.clone().addScaledVector(dir, len);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-    const g = cyl(rad * 0.7, rad, len, depth > 3 ? 6 : depth > 1 ? 4 : 3, true);
-    const m4 = new THREE.Matrix4().compose(p.clone().addScaledVector(dir, len / 2), q, new THREE.Vector3(1, 1, 1));
-    B.add(g, 'wood', m4, { collider: false, tint: 0x5a5048 });
-    if (depth <= 0 || rad < 0.015) { leafPts.push(end); return; }
-    const kids = depth > 2 ? 2 + (r() < 0.5 ? 1 : 0) : 2 + r.int(0, 2);
-    for (let k = 0; k < kids; k++) {
-      const nd = dir.clone().add(new THREE.Vector3((r() - 0.5) * 1.3, 0.25 + r() * 0.5, (r() - 0.5) * 1.3)).normalize();
-      grow(end, nd, len * (0.62 + r() * 0.18), rad * 0.62, depth - 1);
+    // slightly kinked limb: two segments
+    const mid = p.clone().addScaledVector(dir, len * 0.5);
+    const d2 = dir.clone().add(new THREE.Vector3((r() - 0.5) * 0.35, 0.05, (r() - 0.5) * 0.35)).normalize();
+    const end = mid.clone().addScaledVector(d2, len * 0.5);
+    const segs = depth >= 3 ? [[p, mid, rad, rad * 0.85], [mid, end, rad * 0.85, rad * 0.7]] : [[p, end, rad, rad * 0.7]];
+    for (const [a, b, ra, rb] of segs) {
+      const v = b.clone().sub(a); const l = v.length(); v.normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(up, v);
+      const g = cyl(rb, ra, l, depth > 3 ? 7 : depth > 2 ? 5 : 3, true);
+      B.add(g, 'wood', new THREE.Matrix4().compose(a.clone().addScaledVector(v, l / 2), q, new THREE.Vector3(1, 1, 1)), { collider: false, tint: 0x5a5048 });
     }
-    if (depth < 3) leafPts.push(end);
+    if (depth <= 0 || rad < 0.012) { leafPts.push(end); return; }
+    const kids = depth >= 4 ? 3 : 2 + (r() < 0.4 ? 1 : 0);
+    for (let k = 0; k < kids; k++) {
+      const leader = k === 0;
+      const spread = leader ? 0.35 : 1.1 + (4 - depth) * 0.1;
+      const nd = d2.clone().add(new THREE.Vector3((r() - 0.5) * spread * 2, leader ? 0.3 : 0.15 + r() * 0.4, (r() - 0.5) * spread * 2)).normalize();
+      grow(end, nd, len * (leader ? 0.8 : 0.6 + r() * 0.15), rad * (leader ? 0.72 : 0.55), depth - 1);
+    }
+    if (depth <= 2) leafPts.push(end);
   };
-  const trunkH = h * 0.35;
-  grow(new THREE.Vector3(x, -0.1, z), new THREE.Vector3((r() - 0.5) * 0.15, 1, (r() - 0.5) * 0.15).normalize(), trunkH, 0.18 + h * 0.01, 4);
-  for (const p of leafPts) if (r() < leaves) ctx.inst('leaf', mat(p.x, p.y, p.z, r() * 3, r() * 6, r() * 3, 1.2 + r(), 1.2 + r(), 1.2 + r()));
+  const trunkH = h * 0.32;
+  grow(new THREE.Vector3(x, -0.1, z), new THREE.Vector3((r() - 0.5) * 0.12, 1, (r() - 0.5) * 0.12).normalize(), trunkH, 0.16 + h * 0.008, 5);
+  for (const p of leafPts) if (r() < leaves) { const s = 0.7 + r() * 0.8; ctx.inst('leaf', mat(p.x, p.y, p.z, r() * 3, r() * 6, r() * 3, s, s, s)); }
   ctx.proxy(0.4, trunkH, 0.4, mat(x, trunkH / 2, z), 'wood');
   ctx.addObb(x, z, 0.25, 0.25, 0, h, false);
 }

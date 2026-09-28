@@ -8,18 +8,28 @@ import { rbox, box, cyl, xf, sweep, extrude, deform, tubeAlong, torus } from './
  */
 const BLACK = 0x1d1e1f, ANOD = 0x27282a, STEEL = 0x34353a, FDE = 0x8c7a5e, RUBBER = 0x141414, WOOD = 0x5a3a22, PLUM = 0x3b2a26;
 
+// Hand grips: `grip` = centre of the gripped cylinder, `front` = thumb side (up the grip), `dir` = wrist->knuckles.
+// The wrist position is derived from the fist shape in SoldierRig (fist centre = wrist + dir*0.068 + medial*0.034).
 export const RIFLES = {
   m4: {
-    right: { pos: new THREE.Vector3(-0.012, -0.108, -0.028), dir: new THREE.Vector3(0.06, -0.12, 1), front: new THREE.Vector3(0, 1, 0.3) },
-    left: { pos: new THREE.Vector3(0.014, -0.1, 0.235), dir: new THREE.Vector3(-0.05, -0.1, 1), front: new THREE.Vector3(0, 1, 0.1) },
+    right: { grip: new THREE.Vector3(0, -0.108, 0.034), dir: new THREE.Vector3(0.0, -0.45, 0.9), front: new THREE.Vector3(0, 0.9, 0.45) },
+    left: { grip: new THREE.Vector3(0, -0.075, 0.238), dir: new THREE.Vector3(0.0, -0.25, 1), front: new THREE.Vector3(0, 1, 0.25) },
     magwell: new THREE.Vector3(0, -0.1, 0.1), muzzle: 0.74, sightY: 0.068, buttZ: -0.3,
   },
   ak: {
-    right: { pos: new THREE.Vector3(-0.012, -0.105, -0.03), dir: new THREE.Vector3(0.06, -0.12, 1), front: new THREE.Vector3(0, 1, 0.3) },
-    left: { pos: new THREE.Vector3(0.014, -0.1, 0.24), dir: new THREE.Vector3(-0.05, -0.1, 1), front: new THREE.Vector3(0, 1, 0.1) },
+    right: { grip: new THREE.Vector3(0, -0.108, 0.034), dir: new THREE.Vector3(0.0, -0.45, 0.9), front: new THREE.Vector3(0, 0.9, 0.45) },
+    left: { grip: new THREE.Vector3(0, -0.085, 0.245), dir: new THREE.Vector3(0.0, -0.15, 1), front: new THREE.Vector3(0, 1, 0.15) },
     magwell: new THREE.Vector3(0, -0.1, 0.1), muzzle: 0.72, sightY: 0.07, buttZ: -0.3,
   },
 };
+/** convert a grip spec into a wrist frame {pos, dir, front} for the given hand side ('L' | 'R') */
+export function wristFrame(spec, side) {
+  const dir = spec.dir.clone().normalize();
+  const front = spec.front.clone().addScaledVector(dir, -spec.front.dot(dir)).normalize();
+  const third = new THREE.Vector3().crossVectors(dir, front);
+  const medial = side === 'L' ? third : third.clone().negate();
+  return { pos: spec.grip.clone().addScaledVector(dir, -0.068).addScaledVector(medial, -0.034), dir, front };
+}
 
 function pistolGrip(add, col) {
   // angled, finger-grooved grip (extruded profile, side view in z/y)

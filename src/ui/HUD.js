@@ -43,7 +43,7 @@ export class HUD {
       hud: $('.hud'), vig: $('.vig'), blood: $('.blood'), xh: $('.xh'), xl: [...root.querySelectorAll('.xh i')],
       hm: $('.hm'), ring: $('.dmg-ring'), strip: $('.cmp-strip'), bearing: $('.cmp-bearing b'), cmpPings: $('.cmp-pings'),
       mm: $('.mm canvas'), mmN: $('.mm-n'), obj: $('.obj-text'), objSub: $('.obj-sub'),
-      wName: $('.w-name'), wMag: $('.w-mag'), wRes: $('.w-res'), wMode: $('.w-mode'), wBar: $('.w-bar'),
+      wName: $('.w-name'), wNote: $('.w-note'), wMag: $('.w-mag'), wRes: $('.w-res'), wMode: $('.w-mode'), wBar: $('.w-bar'),
       lethal: $('.eq-lethal b'), tactical: $('.eq-tactical b'), prompt: $('.prompt'), popups: $('.popups'),
       feed: $('.feed'), wave: $('.wv-num'), hostiles: $('.wv-host b'), scoreEl: $('.wv-score b'),
       banner: $('.banner'), death: $('.death'), deathT: $('.death-t'), deathTip: $('.death-tip'),
@@ -97,6 +97,7 @@ export class HUD {
       <div class="eq-tactical">${ICONS.flash}<b>2</b></div>
     </div>
     <div class="ammo">
+      <div class="w-note"></div>
       <div class="w-top"><span class="w-name">M4A1</span><span class="w-mode"></span></div>
       <div class="w-count"><span class="w-mag">30</span><span class="w-res">120</span></div>
       <div class="w-bar"></div>
@@ -179,6 +180,9 @@ export class HUD {
     ev.on('player:damaged', (d) => { if (d?.fromPos) this.addDamageIndicator(d.fromPos); this._hitFlash = 1; });
     ev.on('wave:start', (d) => { const n = d?.wave ?? d; this.showBanner(`WAVE ${pad2(n)}`, 'HOSTILE REINFORCEMENTS INBOUND'); });
     ev.on('wave:complete', (d) => this.showBanner('WAVE CLEARED', `+${d?.bonus ?? 500} WAVE BONUS`));
+    const MODE = { auto: 'FULL AUTO', full: 'FULL AUTO', semi: 'SEMI-AUTO', burst: 'BURST' };
+    ev.on('weapon:mode', (d) => this._note(MODE[String(d?.fireMode).toLowerCase()] || String(d?.fireMode || '').toUpperCase()));
+    ev.on('weapon:switch', (d) => this._note(String(d?.weapon || '').toUpperCase()));
     ev.on('objective', (o) => this.setObjective(o?.text ?? o, o?.sub));
     ev.on('player:died', () => { this.el.deathTip.textContent = DEATH_TIPS[(this.game.player?.deaths ?? 0) % DEATH_TIPS.length]; });
   }
@@ -247,6 +251,11 @@ export class HUD {
     this.el.ring.appendChild(d);
     this._dmg.push({ el: d, pos: fromPos.clone ? fromPos.clone() : new THREE.Vector3(fromPos.x, fromPos.y, fromPos.z), t: 0 });
     if (this._dmg.length > 6) { const o = this._dmg.shift(); o.el.remove(); }
+  }
+
+  _note(text) {
+    const n = this.el.wNote; n.textContent = text;
+    n.classList.remove('on'); void n.offsetWidth; n.classList.add('on');
   }
 
   _popup(pts, label) {

@@ -80,11 +80,39 @@ export class TextureBaker {
     return rt;
   }
 
+  /** Allocate the output textures now; the GPU work is queued and runs in run()/flush(). */
   bake(name, recipe, res) {
+    const out = new THREE.WebGLRenderTarget(res, res, {
+      count: 3, depthBuffer: false, generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
+      wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, anisotropy: this.maxAniso,
+    });
+    const [map, normal, orm] = out.textures;
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.name = name + '_albedo'; normal.name = name + '_normal'; orm.name = name + '_orm';
+    const set = { map, normal, orm, target: out, size: recipe.size, res, ms: 0, done: false };
+    (this.queue ||= []).push({ name, recipe, res, set });
+    return set;
+  }
+
+  get pending() { return this.queue?.length || 0; }
+
+  /** Run queued bakes until `budgetMs` is spent (at least one). Returns remaining count. */
+  run(budgetMs = Infinity) {
+    const t0 = performance.now();
+    while (this.queue?.length) {
+      const job = this.queue.shift();
+      this._render(job);
+      if (performance.now() - t0 > budgetMs) break;
+    }
+    return this.pending;
+  }
+  flush() { return this.run(Infinity); }
+
+  _render({ name, recipe, res, set }) {
     const t0 = performance.now();
     const r = this.renderer;
     const prevRT = r.getRenderTarget();
-    const prevAuto = r.autoClear;
     const prevXr = r.xr.enabled; r.xr.enabled = false;
     const prevShadow = r.shadowMap.autoUpdate; r.shadowMap.autoUpdate = false;
 
@@ -104,28 +132,19 @@ export class TextureBaker {
     r.setRenderTarget(tmp);
     r.render(this.scene, this.camera);
 
-    const out = new THREE.WebGLRenderTarget(res, res, {
-      count: 3, depthBuffer: false, generateMipmaps: true,
-      minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
-      wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, anisotropy: this.maxAniso,
-    });
-    const [map, normal, orm] = out.textures;
-    map.colorSpace = THREE.SRGBColorSpace;
-    map.name = name + '_albedo'; normal.name = name + '_normal'; orm.name = name + '_orm';
     const u = this.pass2.uniforms;
     u.tA.value = tmp.textures[0]; u.tB.value = tmp.textures[1];
     u.uRes.value = res; u.uSize.value = recipe.size; u.uNrm.value = recipe.nrm ?? 1;
     u.uAo.value = recipe.ao ?? 40; u.uAoR.value = recipe.aoR ?? 0.01;
     this.quad.material = this.pass2;
-    r.setRenderTarget(out);
+    r.setRenderTarget(set.target);
     r.render(this.scene, this.camera);
 
     if (this.profile) r.getContext().finish();
-    r.setRenderTarget(prevRT); r.autoClear = prevAuto; r.xr.enabled = prevXr; r.shadowMap.autoUpdate = prevShadow;
+    r.setRenderTarget(prevRT); r.xr.enabled = prevXr; r.shadowMap.autoUpdate = prevShadow;
     pass1.dispose();
-    const ms = performance.now() - t0; this.totalMs += ms;
-    if (this.profile) console.info(`[bake] ${name} ${res}px ${ms.toFixed(0)} ms`);
-    return { map, normal, orm, target: out, size: recipe.size, res, ms };
+    set.ms = performance.now() - t0; set.done = true; this.totalMs += set.ms;
+    if (this.profile) console.info(`[bake] ${name} ${res}px ${set.ms.toFixed(0)} ms`);
   }
 
   disposeTemps() { for (const rt of this.tmp.values()) rt.dispose(); this.tmp.clear(); }

@@ -321,13 +321,14 @@ export function buildBlock(ctx, spec) {
       F.box(uc - bw2 / 2, uc + bw2 / 2, yb - 0.16, yb, 0, dep, 'concrete', { collider: true });
       F.plane(uc - bw2 / 2, uc + bw2 / 2, yb - 1.2, yb - 0.16, 0.015, 'decal_streak');
       if (type < 0.4) {
-        // steel bar railing
-        const rt = r.pick([0x3a4a3a, 0x5a3a2a, 0x2e3440]);
+        // steel bar railing (alpha-tested baluster card) + solid top rail
+        const ri = r.int(0, 2), rt = [0x3a4a3a, 0x5a3a2a, 0x2e3440][ri];
         F.box(uc - bw2 / 2, uc + bw2 / 2, yb + 1.0, yb + 1.05, dep - 0.06, dep, 'metal_painted', { collider: false, tint: rt });
-        F.box(uc - bw2 / 2, uc + bw2 / 2, yb + 0.1, yb + 0.14, dep - 0.05, dep - 0.01, 'metal_painted', { collider: false, tint: rt });
-        for (let u = uc - bw2 / 2 + 0.03; u <= uc + bw2 / 2; u += 0.13) F.box(u, u + 0.02, yb, yb + 1.0, dep - 0.04, dep - 0.02, 'metal_painted', { collider: false, tint: rt });
-        for (const s of [-1, 1]) for (let dd = 0.1; dd < dep; dd += 0.13) F.box(uc + s * bw2 / 2 - 0.02, uc + s * bw2 / 2, yb, yb + 1.0, dd, dd + 0.02, 'metal_painted', { collider: false, tint: rt });
-        for (const s of [-1, 1]) F.box(uc + s * bw2 / 2 - 0.03, uc + s * bw2 / 2 + 0.01, yb + 1.0, yb + 1.05, 0, dep, 'metal_painted', { collider: false, tint: rt });
+        F.geo(new THREE.PlaneGeometry(bw2, 1.0), 'railing' + ri, uc, yb + 0.5, dep - 0.03, 0, 0, 0, { collider: false, uvScale: 1 });
+        for (const s2 of [-1, 1]) {
+          F.geo(new THREE.PlaneGeometry(dep, 1.0), 'railing' + ri, uc + s2 * (bw2 / 2 - 0.01), yb + 0.5, dep / 2, 0, Math.PI / 2, 0, { collider: false, uvScale: 1 });
+          F.box(uc + s2 * bw2 / 2 - 0.03, uc + s2 * bw2 / 2 + 0.01, yb + 1.0, yb + 1.05, 0, dep, 'metal_painted', { collider: false, tint: rt });
+        }
       } else if (type < 0.75) {
         // concrete / corrugated sheet parapet
         const pm = r() < 0.5 ? 'concrete' : 'metal_painted'; const pt = pm === 'metal_painted' ? r.pick([0x7a8a90, 0x9a9070, 0x6a7a5a]) : undefined;

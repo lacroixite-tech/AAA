@@ -6,6 +6,7 @@ import { clamp, lerp, angleWrap, dampAngle, mulberry32 } from './util.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const DOWN = V(0, -1, 0);
+const _Y = V(0, 1, 0);
 const PART_MULT = { head: 4.0, body: 1.0, limb: 0.7 };
 
 /**
@@ -47,7 +48,7 @@ export class Soldier {
   get eye() { return V(this.position.x, this.position.y + (this.anim._crouch > 0.5 ? 1.05 : 1.62), this.position.z); }
   muzzleWorld(out = V()) {
     const R = this.rig; out.set(0, 0, R.rifle.muzzle).applyQuaternion(R.q[BI.weapon]).add(R.p[BI.weapon]);
-    return out.applyMatrix4(this.root.matrixWorld);
+    return out.applyAxisAngle(_Y, this.yaw).add(this.position);
   }
   playerTarget() {
     const p = this.game.player; if (!p?.position) return null;
@@ -104,6 +105,7 @@ export class Soldier {
     // velocity in char space
     const lv = this.vel.clone().applyAxisAngle(V(0, 1, 0), -this.yaw);
     a.vel.copy(lv);
+    a.lookAround = (this.state === 'patrol' || this.state === 'idle') && !this.faceTarget ? 1 : 0;
     this.root.position.copy(this.position); this.root.rotation.y = this.yaw;
     a.update(dt);
   }
@@ -352,7 +354,7 @@ export class Soldier {
     const dist = origin.distanceTo(tgt);
     const pl = g.player;
     // hit probability: distance, target motion, exposure time, stance and a global fairness cap
-    let p = 0.62 / (1 + (dist / 22) ** 2);
+    let p = 0.5 / (1 + (dist / 22) ** 2);
     p *= 1 - 0.55 * (pl?.moveSpeed01 || 0) * (pl?.sprinting ? 1.2 : 1);
     p *= clamp(0.35 + this.visibleTime * 0.25, 0.35, 1);
     if (pl?.crouching) p *= 0.85;
@@ -369,7 +371,7 @@ export class Soldier {
       aim.addScaledVector(side, Math.cos(ang) * r).addScaledVector(up, Math.sin(ang) * r * 0.7);
     }
     const dir = aim.sub(origin).normalize();
-    g.events.emit('enemy:fire', { origin: origin.clone(), dir: dir.clone(), enemy: this });
+    g.events.emit('enemy:fire', { origin: origin.clone(), dir: dir.clone(), enemy: this, blind, p });
     const wh = g.collision?.raycast ? g.collision.raycast(origin, dir, 300, { dynamic: false }) : null;
     if (hit && (!wh || wh.distance > dist - 0.3)) {
       const amount = Math.round(lerp(18, 11, clamp(dist / 40, 0, 1)));

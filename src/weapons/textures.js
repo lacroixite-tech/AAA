@@ -98,12 +98,12 @@ function toTex(size, chans, { srgb = false, repeat = true } = {}) {
 
 function camo(size) {
   // Multicam-style: tan base, olive/brown blobs, dark branches, cream flecks.
-  const base = [0.62, 0.55, 0.42];
+  const base = [0.56, 0.5, 0.39];
   const layers = [
     { n: normalize(fbm(size, 4, 5, 11)), th: 0.55, c: [0.43, 0.42, 0.29] },
     { n: normalize(fbm(size, 4, 5, 23)), th: 0.60, c: [0.44, 0.33, 0.22] },
     { n: normalize(fbm(size, 8, 4, 37)), th: 0.68, c: [0.30, 0.31, 0.21] },
-    { n: normalize(fbm(size, 8, 4, 51)), th: 0.72, c: [0.76, 0.71, 0.56] },
+    { n: normalize(fbm(size, 8, 4, 51)), th: 0.77, c: [0.66, 0.62, 0.5] },
     { n: normalize(fbm(size, 16, 3, 61)), th: 0.74, c: [0.22, 0.18, 0.13] },
   ];
   const grain = fbm(size, 64, 2, 71);
@@ -136,6 +136,7 @@ function markings() {
   c.font = 'bold 40px Arial, Helvetica, sans-serif';
   c.fillText('HOLO', 20, 220); c.font = '28px Arial, Helvetica, sans-serif';
   c.fillText('EXPS-3  NV', 150, 222); c.fillText('▲  ▼', 420, 220);
+  c.font = 'bold 34px Arial, Helvetica, sans-serif'; c.fillText('P-18   9x19', 630, 222);
   const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; t.colorSpace = THREE.NoColorSpace;
   return t;
 }

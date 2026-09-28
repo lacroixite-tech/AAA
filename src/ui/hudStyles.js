@@ -144,6 +144,9 @@ export const HUD_CSS = `
 .ammo{display:flex;flex-direction:column;align-items:flex-end;min-width:${u(230)}}
 .w-top{display:flex;align-items:center;gap:${u(10)};font-weight:700;font-size:${u(18)};letter-spacing:.12em}
 .w-name{color:#fff}
+.w-note{font-weight:700;font-size:${u(15)};letter-spacing:.24em;color:var(--hud-amber);opacity:0;height:${u(18)}}
+.w-note.on{animation:wnote 1.8s ease-out forwards}
+@keyframes wnote{0%{opacity:0;transform:translateY(${u(6)})}10%{opacity:1;transform:none}75%{opacity:1}100%{opacity:0}}
 .fm{display:inline-flex;gap:${u(2.5)};align-items:flex-end;height:${u(14)}}
 .fm i{width:${u(4)};height:${u(13)};background:#fff;border-radius:${u(2)} ${u(2)} 0 0;box-shadow:0 0 ${u(2)} rgba(0,0,0,.6)}
 .fm.semi i{opacity:1}.fm.burst i:nth-child(2){height:${u(13)}}

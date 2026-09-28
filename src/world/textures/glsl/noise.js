@@ -25,7 +25,7 @@ float vnoise(vec2 p, vec2 per, float s){
   float c = hash12(mod(i + vec2(0, 1), per) + o), d = hash12(mod(i + vec2(1, 1), per) + o);
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
-vec2 grd(vec2 i){ float a = hash12(i) * TAU; return vec2(cos(a), sin(a)); }
+vec2 grd(vec2 i){ return normalize(hash22(i) - 0.5 + 1e-4); }
 // periodic gradient noise ~ -1..1
 float gnoise(vec2 p, vec2 per, float s){
   vec2 i = floor(p), f = fract(p);
@@ -64,12 +64,8 @@ vec4 voronoi(vec2 p, vec2 per, float jit, float s, out vec2 cellId, out vec2 rel
     float d = dot(r, r);
     if (d < F1){ F2 = F1; F1 = d; mr = r; mg = g; } else if (d < F2) F2 = d;
   }
-  float md = 8.0;
-  for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++){
-    vec2 g = mg + vec2(i, j);
-    vec2 r = g + hash22(mod(n + g, per) + o) * jit + (1.0 - jit) * 0.5 - f;
-    if (dot(mr - r, mr - r) > 1e-5) md = min(md, dot(0.5 * (mr + r), normalize(r - mr)));
-  }
+  // cheap border distance approximation (F2 - F1) / 2 instead of the exact 5x5 second pass
+  float md = 0.5 * (sqrt(F2) - sqrt(F1));
   cellId = mod(n + mg, per);
   rel = mr;
   return vec4(sqrt(F1), sqrt(F2), hash12(cellId + o + 7.7), md);

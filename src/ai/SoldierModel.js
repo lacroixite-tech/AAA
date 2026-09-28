@@ -78,8 +78,19 @@ class Builder {
     const rmv = o.rm || [1, 0];
     const p = geom.attributes.position; const v = new THREE.Vector3();
     const w = o.w || 'chest';
+    const dusty = g !== 'lens' && g !== 'head' && o.w !== 'weapon' && o.w !== 'mag';
     for (let i = 0; i < n; i++) {
       col[i * 3] = _c.r * k; col[i * 3 + 1] = _c.g * k; col[i * 3 + 2] = _c.b * k;
+      if (dusty) {
+        // dust / mud creeping up from the boots, plus faint grime on knees
+        const y = geom.attributes.position.getY(i), zz = geom.attributes.position.getZ(i);
+        let d = (1 - smooth(0.04, 0.6, y)) * 0.55 + Math.exp(-((y - 0.5) ** 2) / 0.004) * (zz > 0.02 ? 0.25 : 0);
+        d *= g === 'uniform' ? 1 : 0.8;
+        const lum = (col[i * 3] + col[i * 3 + 1] + col[i * 3 + 2]) / 3;
+        const dr = 0.2, dg = 0.16, db = 0.11; // linear dust colour
+        const kk = d * (lum < dr ? 0.9 : 0.5);
+        col[i * 3] += (dr * (0.6 + lum) - col[i * 3]) * kk; col[i * 3 + 1] += (dg * (0.6 + lum) - col[i * 3 + 1]) * kk; col[i * 3 + 2] += (db * (0.6 + lum) - col[i * 3 + 2]) * kk;
+      }
       rm[i * 2] = rmv[0]; rm[i * 2 + 1] = rmv[1];
       if (typeof w === 'string') { si[i * 4] = BI[w]; sw[i * 4] = 1; }
       else {
@@ -391,7 +402,7 @@ function buildHelmet(B, L) {
     // headset ear cup (Comtac-style)
     const ec = V(s * 0.093, 1.693, 0.002);
     const cup = cyl(0.043, 0.046, 0.034, 20); deform(cup, (v) => { const r = Math.hypot(v.x, v.z); if (v.y > 0.01) v.y += (0.004 - r * r * 2); }, true);
-    B.add(xf(cup, [ec.x + s * 0.012, ec.y, ec.z], [0, 0, -s * Math.PI / 2]), { g: 'hard', w: hw, col: 0x3a3b36, rm: [1.0, 0] });
+    B.add(xf(cup, [ec.x + s * 0.012, ec.y, ec.z], [0, 0, -s * Math.PI / 2]), { g: 'hard', w: hw, col: 0x2c2d29, rm: [1.4, 0] });
     B.add(xf(cyl(0.047, 0.047, 0.012, 20), [ec.x - s * 0.006, ec.y, ec.z], [0, 0, -s * Math.PI / 2]), { g: 'hard', w: hw, col: 0x141414, rm: [1.2, 0] }); // ear seal
     B.add(xf(cyl(0.012, 0.012, 0.01, 10), [ec.x + s * 0.03, ec.y + 0.018, ec.z - 0.01], [0, 0, -s * Math.PI / 2]), { g: 'hard', w: hw, col: 0x222222 }); // volume knob
     B.add(xf(cyl(0.004, 0.004, 0.04, 6), [ec.x + s * 0.025, ec.y + 0.035, ec.z + 0.018], [0.4, 0, 0]), { g: 'hard', w: hw, col: 0x111111 }); // antenna stub
@@ -415,12 +426,14 @@ function buildHelmet(B, L) {
   }
   if (L.nvg === 'goggles') {
     // PVS-31 style binocular flipped up
-    const g0 = helmetPoint(c, R, 0, 0.55, 0.06);
-    B.add(xf(rbox(0.07, 0.03, 0.04, 0.006), [g0.x, g0.y, g0.z], [-1.0, 0, 0]), { g: 'hard', w: hw, col: 0x1c1c1c });
+    const g0 = helmetPoint(c, R, 0, 0.5, 0.05);
+    B.add(xf(rbox(0.07, 0.03, 0.04, 0.006), [g0.x, g0.y, g0.z], [-0.6, 0, 0]), { g: 'hard', w: hw, col: 0x1c1c1c });
+    const th = 1.05, ax = V(0, Math.cos(th), Math.sin(th));
     for (const s of [-1, 1]) {
-      B.add(xf(cyl(0.017, 0.019, 0.08, 16), [g0.x + s * 0.032, g0.y + 0.02, g0.z + 0.015], [-0.55, 0, 0]), { g: 'hard', w: hw, col: 0x222222, rm: [0.8, 0.2] });
-      const lp = V(g0.x + s * 0.032, g0.y + 0.02 + Math.cos(0.55) * 0.041, g0.z + 0.015 - Math.sin(0.55) * 0.041);
-      B.add(xf(cyl(0.015, 0.015, 0.003, 16), [lp.x, lp.y, lp.z], [-0.55, 0, 0]), { g: 'lens', col: 0x335544 });
+      const cp = V(g0.x + s * 0.03, g0.y + 0.012, g0.z + 0.02);
+      B.add(xf(cyl(0.017, 0.019, 0.075, 16), [cp.x, cp.y, cp.z], [th, 0, 0]), { g: 'hard', w: hw, col: 0x222222, rm: [0.8, 0.2] });
+      const lp = cp.clone().addScaledVector(ax, -0.0385);
+      B.add(xf(cyl(0.0165, 0.0165, 0.003, 16), [lp.x, lp.y, lp.z], [th, 0, 0]), { g: 'lens', col: 0x1a2a24 });
     }
     // battery pack cable
     B.add(tubeAlong([helmetPoint(c, R, 0.3, 0.6, 0.012), helmetPoint(c, R, 1.2, 1.0, 0.01), helmetPoint(c, R, 2.6, 0.5, 0.012), helmetPoint(c, R, Math.PI, 0.25, 0.03)], 0.0025, 20, 4), { g: 'hard', w: hw, col: 0x111111 });
@@ -437,16 +450,19 @@ function buildHelmet(B, L) {
 
 function buildScarf(B, L) {
   if (!L.scarf) return;
-  const loops = [[1.5, 0.098, 0.086, 0.026, 0.3], [1.54, 0.09, 0.08, 0.023, 1.9], [1.572, 0.08, 0.075, 0.018, 4.2]];
-  for (const [y, rx, rz, tr, ph] of loops) {
+  const loops = [[1.505, 0.1, 0.09, 0.034, 0.3, 0.02], [1.548, 0.09, 0.082, 0.028, 1.9, 0.012]];
+  for (const [y, rx, rz, hh, ph, drop] of loops) {
     const rings = [];
-    for (let i = 0; i <= 28; i++) {
-      const a = (i / 28) * Math.PI * 2; const c = V(Math.sin(a) * rx, y + Math.sin(a * 2 + ph) * 0.008 - Math.max(0, Math.cos(a)) * 0.012, -0.018 + Math.cos(a) * rz);
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      const fr = Math.max(0, Math.cos(a));
+      const c = V(Math.sin(a) * rx * (1 + 0.04 * Math.sin(a * 3 + ph)), y + Math.sin(a * 2 + ph) * 0.006 - fr * fr * drop, -0.018 + Math.cos(a) * rz * (1 + 0.05 * fr));
       const out = V(Math.sin(a), 0, Math.cos(a));
-      const t = 1 + 0.25 * Math.sin(a * 3 + ph) + 0.15 * Math.sin(a * 7 + ph * 2);
-      rings.push({ c, x: out, z: V(0, 1, 0), rx: tr * t * 1.15, rz: tr * t * 0.85, p: 2, bump: (th) => 1 + 0.12 * Math.sin(th * 3 + a * 5) });
+      const t = 1 + 0.2 * Math.sin(a * 3 + ph) + 0.12 * Math.sin(a * 7 + ph * 2);
+      const up = V(0, 1, 0).applyAxisAngle(V(Math.cos(a), 0, -Math.sin(a)), 0.25 * Math.sin(a * 4 + ph));
+      rings.push({ c, x: out, z: up, rx: 0.013 * t, rz: hh * t, p: 2.2, bump: (th) => 1 + 0.18 * Math.sin(th * 2 + a * 6 + ph) * Math.abs(Math.cos(th)) });
     }
-    B.add(sweep(rings, 10), { g: 'gear', w: chain(['chest', 'neck']), col: L.scarf, uv: 6 });
+    B.add(sweep(rings, 12), { g: 'gear', w: chain(['chest', 'neck']), col: L.scarf, uv: 6 });
   }
   // knot / hanging tail at the front
   const knot = sweep([0, 1, 2, 3, 4].map((i) => ({ c: V(0.012 * Math.sin(i), 1.5 - i * 0.022, 0.07 + i * 0.006), x: V(1, 0, 0), z: V(0, 0.2, 1).normalize(), rx: 0.03 - i * 0.004, rz: 0.012, p: 2 })), 10, { capStart: true, capEnd: true });
@@ -479,9 +495,9 @@ function buildFaceGear(B, L) {
       B.add(xf(cyl(0.022, 0.022, 0.003, 20), [ep.x, ep.y, ep.z], [Math.PI / 2, s * 0.38, 0]), { g: 'lens', w: 'head', col: 0x151a1c });
     }
     // filter canister on left cheek + exhale valve
-    const fp = helmetPoint(c, R, 0.6, -0.45, 0.03);
-    B.add(xf(cyl(0.04, 0.04, 0.036, 20), [fp.x, fp.y, fp.z], [Math.PI / 2 - 0.4, 0.6, 0]), { g: 'hard', w: 'head', col: 0x3a3c34, rm: [0.9, 0.2] });
-    for (let i = 0; i < 4; i++) B.add(xf(torus(0.04, 0.002, 4, 20), [fp.x, fp.y, fp.z], [Math.PI / 2 - 0.4 + Math.PI / 2, 0.6, 0]), { g: 'hard', w: 'head', col: 0x2a2a28 });
+    const fp = helmetPoint(c, R, 0.75, -0.5, 0.012);
+    B.add(xf(cyl(0.036, 0.036, 0.032, 20), [fp.x, fp.y, fp.z], [Math.PI / 2 - 0.5, 0.75, 0]), { g: 'hard', w: 'head', col: 0x3a3c34, rm: [0.9, 0.2] });
+    B.add(xf(torus(0.036, 0.003, 4, 20), [fp.x, fp.y, fp.z], [-0.5, 0.75, 0]), { g: 'hard', w: 'head', col: 0x2a2a28 });
     const vp = helmetPoint(c, R, 0, -0.5, 0.025);
     B.add(xf(cyl(0.022, 0.026, 0.03, 16), [vp.x, vp.y, vp.z], [Math.PI / 2 + 0.4, 0, 0]), { g: 'hard', w: 'head', col: 0x1c1c1c });
     B.add(xf(cyl(0.016, 0.016, 0.02, 12), [vp.x, vp.y - 0.004, vp.z + 0.018], [Math.PI / 2 + 0.4, 0, 0]), { g: 'hard', w: 'head', col: 0x111111 });
@@ -622,7 +638,7 @@ export function soldierMaterials(L) {
   const gp = gearTextures(false), gm = gearTextures(true), hd = hardTextures();
   const ht = headTextures(L.id, { knit: L.knit, skin: [178, 132, 108], open: L.eyes !== 'gasmask' });
   const mats = [
-    patchMaterial(new THREE.MeshPhysicalMaterial({ map: camoTexture(L.camo), normalMap: uniformNormal(), normalScale: new THREE.Vector2(1.1, 1.1), roughness: 0.92, vertexColors: true, sheen: 1, sheenRoughness: 0.75, sheenColor: new THREE.Color(0.07, 0.07, 0.065) })),
+    patchMaterial(new THREE.MeshPhysicalMaterial({ map: camoTexture(L.camo), normalMap: uniformNormal(), normalScale: new THREE.Vector2(1.1, 1.1), roughness: 1, envMapIntensity: 0.75, vertexColors: true, sheen: 1, sheenRoughness: 0.75, sheenColor: new THREE.Color(0.07, 0.07, 0.065) })),
     patchMaterial(new THREE.MeshPhysicalMaterial({ map: gp.map, normalMap: gp.normalMap, roughnessMap: gp.roughnessMap, roughness: 1, vertexColors: true, sheen: 1, sheenRoughness: 0.7, sheenColor: new THREE.Color(0.06, 0.06, 0.055) })),
     patchMaterial(new THREE.MeshPhysicalMaterial({ map: gm.map, normalMap: gm.normalMap, normalScale: new THREE.Vector2(1.4, 1.4), roughnessMap: gm.roughnessMap, roughness: 1, vertexColors: true, sheen: 1, sheenRoughness: 0.7, sheenColor: new THREE.Color(0.06, 0.06, 0.055) })),
     patchMaterial(new THREE.MeshStandardMaterial({ map: hd.map, roughnessMap: hd.roughnessMap, normalMap: hd.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.62, metalness: 0, vertexColors: true })),

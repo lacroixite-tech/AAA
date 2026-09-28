@@ -48,7 +48,7 @@ void main(){
   }
   vec3 world = c + R * position.x * sx + U * position.y * sy;
   vWorld = world; vR = R; vU = U; vF = F;
-  vUv = uv; vColor = aColor; vColor.a *= af; vP2 = aP2; vAdd = aP1.w; vTile = aP1.x;
+  float tI = floor(aP1.x + 0.5); vUv = (vec2(mod(tI, 4.0), floor(tI / 4.0)) + clamp(uv, 0.004, 0.996)) * 0.25; vColor = aColor; vColor.a *= af; vP2 = aP2; vAdd = aP1.w; vTile = aP1.x;
   vPlane = aPlane; vSoft = aP3.x; vSun = aP3.w;
   // near-camera fade for lit (volumetric) particles so they never clip the lens hard
   if (aP2.x > 0.0) vColor.a *= smoothstep(0.08, 0.08 + max(0.15, w * 0.5), depth);
@@ -75,11 +75,10 @@ vec3 fireRamp(float x){
 }
 float hg(float mu, float g){ float g2 = g * g; return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * mu, 1.5)); }
 void main(){
-  vec2 tuv = (vec2(mod(vTile, 4.0), floor(vTile / 4.0 + 0.01)) + vUv) * 0.25;
-  vec4 t = texture2D(uAtlas, tuv);
+  vec4 t = texture2D(uAtlas, vUv);
   float a = t.a;
   float erode = vP2.z;
-  if (erode > 0.0) a = smoothstep(erode, min(1.0, erode + 0.3), a) * a;
+  if (erode > 0.0) { a = clamp((a - erode) / max(1e-3, 1.0 - erode), 0.0, 1.0); a = a * (2.0 - a); }
   float lit = vP2.x, emis = vP2.y, heat = vP2.w;
   vec3 col;
   // unlit / emissive component (hot white core where intensity is high)
@@ -97,7 +96,7 @@ void main(){
     vec3 L = amb * (0.55 + 0.45 * thick) + uSunColor * vSun * wrap * (0.4 + 0.6 * thick) * RECIPROCAL_PI;
     L += uSunColor * vSun * hg(mu, 0.55) * (1.0 - a * 0.7) * 0.5; // backlit forward scatter (golden-hour glow through smoke)
     vec3 d1 = uFlashPos - vWorld; float q1 = dot(d1, d1);
-    L += uFlashColor * (0.35 + 0.65 * max(0.0, dot(n, d1 * inversesqrt(q1 + 1e-4)))) / (q1 + 0.05);
+    L += uFlashColor * (0.35 + 0.65 * max(0.0, dot(n, d1 * inversesqrt(q1 + 1e-4)))) / (q1 + 0.4);
     vec3 d2 = uFlash2Pos - vWorld; float q2 = dot(d2, d2);
     L += uFlash2Color * (0.35 + 0.65 * max(0.0, dot(n, d2 * inversesqrt(q2 + 1e-4)))) / (q2 + 0.5);
     col += vColor.rgb * L * lit;
@@ -172,7 +171,7 @@ export class Particles {
     this.uniforms.uAtlas.value = atlas;
     const m = new THREE.ShaderMaterial({
       vertexShader: vert, fragmentShader: frag, uniforms: this.uniforms, fog: true,
-      transparent: true, depthWrite: false, depthTest: true,
+      transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor, premultipliedAlpha: true,
     });

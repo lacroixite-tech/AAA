@@ -88,9 +88,13 @@ export function sweep(rings, nu = 16, { capStart = false, capEnd = false } = {})
     }
   }
   const W = nu + 1;
+  // winding: outward requires x == tangent x z; flip otherwise
+  const mid = Math.max(0, Math.min(rows - 2, rows >> 1));
+  const tan = rings[mid + 1].c.clone().sub(rings[mid].c);
+  const flip = tan.lengthSq() > 1e-12 && new THREE.Vector3().crossVectors(tan, rings[mid].z).dot(rings[mid].x) < 0;
   for (let r = 0; r < rows - 1; r++) for (let j = 0; j < nu; j++) {
     const a = r * W + j, b = a + 1, c = a + W, d = c + 1;
-    idx.push(a, c, b, b, c, d);
+    if (flip) idx.push(a, b, c, b, d, c); else idx.push(a, c, b, b, c, d);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -99,10 +103,11 @@ export function sweep(rings, nu = 16, { capStart = false, capEnd = false } = {})
   // orientation check: make normals point outward
   g.computeVertexNormals();
   fixSeamNormals(g, rows, W);
+  const flipAll = flip;
   const cap = (row, flip) => {
     const R = rings[row]; const base = pos.length / 3;
     pos.push(R.c.x, R.c.y, R.c.z); uv.push(0, 0);
-    for (let j = 0; j < nu; j++) { const a = row * W + j, b = a + 1; if (flip) idx.push(base, a, b); else idx.push(base, b, a); }
+    for (let j = 0; j < nu; j++) { const a = row * W + j, b = a + 1; if (flip !== flipAll) idx.push(base, a, b); else idx.push(base, b, a); }
   };
   if (capStart || capEnd) {
     if (capStart) cap(0, true);

@@ -221,20 +221,20 @@ Surf surface(vec2 uv){
 }` },
 
   // ------------------------------------------------------------------ METALS
-  metal_painted: { size: 2.0, res: 2, nrm: 1.0, ao: 40, aoR: 0.004, paint: [0.30, 0.34, 0.29], glsl: /* glsl */ `
+  metal_painted: { size: 2.0, res: 2, nrm: 1.0, ao: 40, aoR: 0.004, paint: [0.30, 0.34, 0.29], paintRef: 0.33, glsl: /* glsl */ `
 Surf surface(vec2 uv){
   Surf s = surf0();
   float c = chipMask(uv, 0.12, 0.71, 1.0);
   float chip = smoothstep(0.0, 0.003, c);
-  float primer = smoothstep(-0.014, -0.012, c) * (1.0 - chip);
+  float primer = smoothstep(-0.008, -0.006, c) * (1.0 - chip);
   // paint (grey value, tinted in shader by uPaint through the albedo alpha mask)
-  float pv = 0.8 + 0.08 * (fbmC(uv, 0.4, 4, 3.0) * 0.5 + 0.5) + 0.04 * vnC(uv, 0.004, 4.0);
+  float pv = 0.33 * (0.94 + 0.08 * (fbmC(uv, 0.4, 4, 3.0) * 0.5 + 0.5) + 0.04 * vnC(uv, 0.004, 4.0));
   float fade = sat(fbmC(uv, 0.9, 4, 5.0) * 0.9 + 0.4);           // chalky UV-faded areas
   vec3 paintCol = vec3(pv) * (1.0 + fade * 0.25);
   float rh; vec3 rc = rustColor(uv, 10.0, rh);
   float bare = smoothstep(0.6, 0.85, vnC(uv, 0.02, 6.0)) * smoothstep(0.015, 0.04, c);
   vec3 under = mix(rc, vec3(0.5, 0.49, 0.47), bare);
-  vec3 col = mix(paintCol, vec3(0.5, 0.42, 0.38), primer * 0.8);
+  vec3 col = mix(paintCol, vec3(0.3, 0.2, 0.16), primer * 0.8);
   col = mix(col, under, chip);
   s.mask = (1.0 - chip) * (1.0 - primer * 0.8);
   // rust run-off below chips (stays inside paint -> tinted & darkened)
@@ -253,8 +253,13 @@ Surf surface(vec2 uv){
   sc *= 1.0 - chip;
   col = mix(col, col * 0.75, sc * 0.6);
   // dirt: darker film + dust
-  float dirt = sat(fbmC(uv, 0.7, 5, 30.0) * 0.8 + 0.3);
-  col *= mix(1.0, 0.7, dirt * 0.5);
+  float dirt = sat(fbmC(uv, 0.7, 5, 30.0) * 1.2 + 0.35);
+  col *= mix(1.0, 0.6, dirt * 0.6);
+  float grimeSt = smoothstep(0.5, 0.9, streaksC(uv, 0.03, 0.7, 33.0)) * smoothstep(0.4, 0.7, vnC(uv, 0.6, 34.0));
+  col *= 1.0 - grimeSt * 0.3;
+  float c2 = chipMask(uv, 0.35, 0.74, 40.0);
+  float chipBig = smoothstep(0.0, 0.003, c2) * (1.0 - chip);
+  col = mix(col, rc * 0.9, chipBig); s.mask *= 1.0 - chipBig; chip = max(chip, chipBig);
   float dust = dustAmt(uv, 0.3, 31.0);
   col = mix(col, col * 0.7 + vec3(0.12, 0.11, 0.1), dust * 0.35);
   float h = -chip * 0.00025 + fbmC(uv, 0.008, 3, 32.0) * 0.00004 + chip * rh * 0.6 - sc * 0.00006;
@@ -278,7 +283,7 @@ Surf surface(vec2 uv){
   h += plate * (0.0004 + 0.0004 * fl.z);
   col = mix(col, col * vec3(1.12, 1.04, 0.96), plate * 0.35);
   // remnant old paint (blistered, rust bleeding through)
-  float c = chipMask(uv, 0.22, 0.55, 6.0);
+  float c = chipMask(uv, 0.22, 0.47, 6.0);
   float paint = 1.0 - smoothstep(-0.004, 0.0, c);
   vec3 pcol = vec3(0.24, 0.26, 0.22) * (0.8 + 0.3 * vnC(uv, 0.1, 7.0)) * (0.9 + 0.15 * vnC(uv, 0.004, 17.0));
   float through = smoothstep(0.45, 0.8, fbmC(uv, 0.04, 5, 8.0) * 0.5 + 0.5);
@@ -345,8 +350,8 @@ Surf surface(vec2 uv){
   float late; float fibre = woodGrain(uv, 1.0, late);
   float w = fbmC(uv, 0.5, 4, 3.0) * 0.5 + 0.5;
   // weathered: grey silver surface with brown underneath
-  vec3 brown = vec3(0.42, 0.31, 0.21), grey = vec3(0.50, 0.47, 0.42);
-  float weather = smoothstep(0.25, 0.7, w);
+  vec3 brown = vec3(0.36, 0.29, 0.22), grey = vec3(0.45, 0.43, 0.39);
+  float weather = smoothstep(0.15, 0.6, w);
   vec3 col = mix(brown, grey, weather);
   col *= 0.86 + 0.16 * fibre;
   col = mix(col, col * vec3(0.62, 0.58, 0.55), late * 0.75);
@@ -497,46 +502,45 @@ Surf surface(vec2 uv){
   return s;
 }` },
 
-  grass: { size: 2.0, res: 2, nrm: 1.2, ao: 40, aoR: 0.006, glsl: /* glsl */ `
+  grass: { size: 1.5, res: 2, nrm: 1.2, ao: 45, aoR: 0.006, glsl: /* glsl */ `
 Surf surface(vec2 uv){
   Surf s = surf0();
-  // soil base
-  vec3 soil = mix(vec3(0.25, 0.2, 0.15), vec3(0.4, 0.34, 0.26), vnC(uv, 0.1, 1.0));
-  float cover = smoothstep(0.25, 0.55, warpC(uv, 0.7, 5, 1.0, 2.0) * 0.5 + 0.5);
-  vec3 col = soil * (0.8 + 0.3 * vnC(uv, 0.005, 3.0));
+  // soil + litter base
+  vec3 soil = mix(vec3(0.26, 0.21, 0.16), vec3(0.38, 0.33, 0.26), vnC(uv, 0.1, 1.0));
+  vec3 col = soil * (0.75 + 0.35 * vnC(uv, 0.004, 3.0));
   float h = fbmC(uv, 0.1, 4, 4.0) * 0.004;
-  // blade layers along several integer-lattice directions (keeps tiling)
-  vec2 dirs[6] = vec2[6](vec2(1,0), vec2(0,1), vec2(1,1), vec2(1,-1), vec2(2,1), vec2(1,-2));
-  float top = 0.0; vec3 bcol = vec3(0);
-  for (int i = 0; i < 6; i++){
-    vec2 d = dirs[i]; vec2 dn = vec2(-d.y, d.x);
-    float fa = FQ(0.05), fb = FQ(0.0028);
-    float pyy = dot(uv, dn) * fb;
-    float cellB = mod(floor(pyy), fb);
-    float rowOff = hash12(vec2(cellB, float(i) + 0.5));
-    vec2 p = vec2(dot(uv, d) * fa + rowOff, pyy);
-    float cellA = mod(floor(p.x), fa);
-    float hsh = hash12(vec2(cellA, cellB) + float(i) * 13.0);
-    float bl = 1.0 - abs(fract(p.y) - 0.5) * 2.0;
-    float len = fract(p.x);
-    float blade = smoothstep(0.55, 0.95, bl) * smoothstep(0.0, 0.25, len) * (1.0 - len * 0.6) * step(0.35, hsh);
-    float bh = blade * (0.3 + 0.7 * hsh) * (1.0 - len);
-    vec3 gc = mix(vec3(0.33, 0.36, 0.17), vec3(0.58, 0.54, 0.33), hash12(vec2(hsh, 3.0)));
-    gc = mix(gc, vec3(0.47, 0.4, 0.28), step(0.8, hash12(vec2(hsh, 5.0))));
-    gc *= 0.7 + 0.6 * len;
-    float take = step(top, bh) * step(0.01, bh);
-    bcol = mix(bcol, gc, take); top = max(top, bh);
+  float cover = smoothstep(0.3, 0.5, fbmC(uv, 0.5, 5, 2.0) * 0.5 + 0.5);
+  // tufts: each voronoi clump has its own blade direction (computed from cell-relative coords -> tiles)
+  float top = 0.0; vec3 bc = soil;
+  for (int L = 0; L < 3; L++){
+    float cell = L == 0 ? 0.075 : (L == 1 ? 0.05 : 0.035);
+    vec2 id, rel; vec4 v = vorCi(uv, cell, 1.0, 10.0 + float(L) * 7.0, id, rel);
+    vec3 ch = hash32(id + float(L) * 3.3);
+    float cm = uSize / FQ(cell);
+    float ang = ch.x * TAU;
+    vec2 q = mat2(cos(ang), sin(ang), -sin(ang), cos(ang)) * (-rel * cm);
+    float wob = (vnoise(vec2(q.x * 60.0, ch.y * 97.0), vec2(1e4), 1.0) - 0.5) * 1.2;
+    float across = q.y * 240.0 + wob + q.x * q.x * 900.0 * (ch.z - 0.5);
+    float si = floor(across), sf = fract(across);
+    float bh = hash12(vec2(si, ch.z * 131.0 + float(L)));
+    float len = cm * (0.35 + 0.35 * bh);
+    float bladeW = smoothstep(0.5, 0.15, abs(sf - 0.5));
+    float fade = sat(1.0 - abs(q.x) / len);
+    float present = step(0.25, bh) * step(0.15 + float(L) * 0.15, ch.y) * cover;
+    float hh = bladeW * fade * present * (0.6 + 0.4 * bh) + float(L) * 0.02;
+    vec3 gc = mix(vec3(0.36, 0.38, 0.19), vec3(0.55, 0.51, 0.31), smoothstep(0.2, 0.8, ch.y + (bh - 0.5) * 0.4));
+    gc = mix(gc, vec3(0.44, 0.37, 0.25), step(0.82, bh) * 0.8);          // dead blades
+    gc = mix(gc, vec3(0.28, 0.33, 0.15), step(0.9, ch.z) * 0.6);          // fresh green tuft
+    gc *= 0.55 + 0.6 * fade;                                              // darker toward the base
+    float take = step(top, hh) * step(0.05, hh);
+    bc = mix(bc, gc, take); top = max(top, hh * take + top * (1.0 - take));
   }
-  float clump = fbmC(uv, 0.07, 4, 70.0) * 0.5 + 0.5;
-  float g = smoothstep(0.02, 0.2, top) * cover * smoothstep(0.25, 0.45, clump + 0.2);
-  bcol *= 0.6 + 0.6 * clump;
-  col = mix(col, bcol, g);
-  col *= mix(1.0, 0.8 + 0.2 * top, cover);
-  h += top * 0.006 * cover;
+  float g = smoothstep(0.05, 0.25, top);
+  col = mix(col * 0.7, bc, g);
+  h += top * 0.012;
   float dry = smoothstep(0.35, 0.75, fbmC(uv, 0.5, 4, 60.0) * 0.5 + 0.5);
-  h += clump * 0.01 * cover;
-  col = mix(col, desat(col, 0.5) * vec3(1.15, 1.05, 0.85), dry * 0.5);
-  s.albedo = col; s.height = h; s.rough = 0.9;
+  col = mix(col, desat(col, 0.45) * vec3(1.12, 1.05, 0.88), dry * 0.5);
+  s.albedo = col; s.height = h; s.rough = 0.92; s.ao = 0.6 + 0.4 * g;
   return s;
 }` },
 
@@ -626,11 +630,11 @@ Surf surface(vec2 uv){
   float weave = (sin(p.x * PI) * sin(p.y * PI)) * (mod(floor(p.x) + floor(p.y), 2.0) * 2.0 - 1.0);
   float folds = ridgedC(uv, 0.5, 4, 1.0);
   float folds2 = fbmC(uv, 0.25, 4, 2.0);
-  float h = folds * 0.008 + folds2 * 0.004 + weave * 0.00006;
+  float h = folds * 0.004 + folds2 * 0.008 + weave * 0.00006;
   vec3 col = vec3(0.30, 0.31, 0.22) * (0.9 + 0.12 * vnC(uv, 0.02, 3.0));
   // sun-bleached / worn on fold ridges
-  float ridge = smoothstep(0.75, 0.95, folds);
-  col = mix(col, vec3(0.44, 0.44, 0.35), ridge * 0.5);
+  float ridge = smoothstep(0.8, 0.98, folds);
+  col = mix(col, col * 1.2, ridge * 0.4);
   float bleach = smoothstep(0.4, 0.8, fbmC(uv, 0.8, 3, 4.0) * 0.5 + 0.5);
   col = mix(col, desat(col, 0.4) * 1.2, bleach * 0.4);
   float dirt = smoothstep(0.4, 0.8, warpC(uv, 0.6, 5, 1.2, 5.0) * 0.5 + 0.5);
@@ -728,8 +732,9 @@ Surf surface(vec2 uv){
   float inT = smoothstep(0.0, 0.0006, ed - chip);
   float missing = step(0.93, th.x);
   float checker = mod(tid.x + tid.y, 2.0);
-  vec3 tc = mix(vec3(0.6, 0.57, 0.52), vec3(0.5, 0.43, 0.37), checker);
-  tc *= 0.92 + 0.12 * th.y;
+  vec3 tc = mix(vec3(0.56, 0.54, 0.5), vec3(0.5, 0.46, 0.41), checker * 0.35 + th.z * 0.4);
+  tc *= 0.88 + 0.16 * th.y;
+  tc = mix(tc, tc * vec3(0.8, 0.78, 0.76), step(0.85, th.x) * 0.8);
   tc *= 0.95 + 0.08 * (fbmC(uv, 0.05, 4, 3.0) * 0.5 + 0.5);
   // speckled glaze
   tc *= 0.94 + 0.1 * smoothstep(0.5, 0.9, vnC(uv, 0.002, 4.0));
@@ -740,7 +745,7 @@ Surf surface(vec2 uv){
   vec3 col = mix(groutC, tc, inT);
   col *= 1.0 - cr * 0.6;
   float h = inT * (0.006 + fbmC(uv, 0.5, 2, 8.0) * 0.0004 + (th.y - 0.5) * 0.0006) - cr * 0.002 + (1.0 - inT) * vnC(uv, 0.003, 9.0) * 0.0005;
-  float rough = mix(0.9, 0.22 + th.z * 0.1, inT);
+  float rough = mix(0.92, 0.45 + th.z * 0.2, inT);
   // missing tile: mortar bed with notched trowel ridges
   float ridges = sin(lp.x * 250.0) * 0.5 + 0.5;
   col = mix(col, bed * (0.9 + 0.1 * ridges), missing);
@@ -749,7 +754,7 @@ Surf surface(vec2 uv){
   // dirt/dust
   float dirt = sat(warpC(uv, 0.7, 5, 1.3, 11.0) * 0.9 + 0.35);
   col = mix(col, vec3(0.4, 0.37, 0.32), dirt * 0.45);
-  rough = mix(rough, 0.85, dirt * 0.8);
+  rough = mix(rough, 0.88, dirt * 0.8);
   float scr = smoothstep(0.985, 1.0, 1.0 - abs(gnA(uv, vec2(0.2, 0.001), 12.0))) * step(0.6, vnC(uv, 0.2, 13.0)) * inT;
   rough += scr * 0.3;
   s.albedo = col; s.height = h; s.rough = rough; s.ao = mix(0.6, 1.0, inT);
@@ -804,10 +809,10 @@ Surf surface(vec2 uv){
   return s;
 }` },
 
-  car_paint: { size: 2.0, res: 1, nrm: 0.6, ao: 0, aoR: 0.003, paint: [0.24, 0.29, 0.33], glsl: /* glsl */ `
+  car_paint: { size: 2.0, res: 1, nrm: 0.6, ao: 0, aoR: 0.003, paint: [0.24, 0.29, 0.33], paintRef: 0.3, glsl: /* glsl */ `
 Surf surface(vec2 uv){
   Surf s = surf0();
-  float pv = 0.8 + 0.05 * vnC(uv, 0.3, 1.0);
+  float pv = 0.3 * (0.97 + 0.05 * vnC(uv, 0.3, 1.0));
   float dust = sat(smoothstep(0.3, 0.9, fbmC(uv, 0.5, 5, 2.0) * 0.5 + 0.5) * 0.8 + smoothstep(0.6, 0.95, streaksC(uv, 0.02, 0.35, 3.0)) * 0.5);
   float speck = step(0.85, vnC(uv, 0.002, 4.0)) * 0.5;
   vec3 dustC = vec3(0.56, 0.52, 0.46);

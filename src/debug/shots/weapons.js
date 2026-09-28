@@ -24,31 +24,31 @@ export default {
   weapon_pistol_reload: vm({ weapon: 'pistol', reload: 0.95, empty: true }),
   weapon_closeup: {
     noCamera: true,
-    setup(game, frame) {
+    setup(game) {
       const sp = game.level.playerSpawn;
       const yaw = sp.yaw;
       const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
       if (!game.__wcu) {
-        const base = sp.position.clone().addScaledVector(fwd, 1.6);
+        const base = sp.position.clone().addScaledVector(fwd, 1.4);
         const hit = game.collision.raycast(base.clone().add(new THREE.Vector3(0, 3, 0)), new THREE.Vector3(0, -1, 0), 10, { dynamic: false });
         const gy = hit ? hit.point.y : sp.position.y;
         // weathered crate as a display surface
         const crate = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.62, 0.62), game.materials.get('wood_planks') || game.materials.get('wood'));
         crate.position.set(base.x, gy + 0.31, base.z); crate.rotation.y = yaw; crate.castShadow = crate.receiveShadow = true;
         game.scene.add(crate);
-        const sc = game.weapons.showcase(new THREE.Vector3(base.x, gy + 0.62 + 0.024, base.z), yaw - Math.PI / 2);
-        // lay the rifle on its right side so the left flank + optic face the camera
-        sc.group.rotation.set(0, yaw - Math.PI / 2 + 0.12, 0);
-        sc.group.children[0].rotation.set(0, 0, Math.PI / 2 * 0);
-        game.__wcu = { base, gy, right, fwd };
-        game.weapons.viewmodel.visible = false;
+        // rifle resting on its magazine and buttpad, left flank (optic, rail numbers, markings) toward the camera
+        const sc = game.weapons.showcase(new THREE.Vector3(base.x, gy + 0.62 + 0.168, base.z), 0);
+        sc.group.rotation.set(0, yaw - Math.PI / 2 + 0.22, 0);
+        sc.group.children[0].rotation.set(0.305, 0, 0);
+        sc.group.children[0].position.set(0, 0, 0.17);
+        game.__wcu = { base, gy };
       }
       const { base, gy } = game.__wcu;
-      const eye = base.clone().addScaledVector(fwd, 0.55).addScaledVector(right, -0.1); eye.y = gy + 0.95;
-      const target = base.clone(); target.y = gy + 0.66;
+      const eye = base.clone().addScaledVector(fwd, 0.78).addScaledVector(right, 0.12); eye.y = gy + 1.06;
+      const target = base.clone().addScaledVector(right, -0.06); target.y = gy + 0.8;
       game.camera.position.copy(eye); game.camera.lookAt(target);
-      game.camera.fov = 45; game.camera.updateProjectionMatrix();
+      game.camera.fov = 42; game.camera.updateProjectionMatrix();
       game.weapons.viewmodel.visible = false;
     },
   },

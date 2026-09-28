@@ -3,7 +3,11 @@ import { rng } from './geom.js';
 
 /** Procedural canvas textures owned by the level (decals, signage, alpha cards). */
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
-function tex(c, { srgb = true, repeat = false, aniso = 8 } = {}) {
+function tex(c, { srgb = true, repeat = false, aniso = 8, mask = false } = {}) {
+  if (mask) {
+    // alphaMap samples the GREEN channel: flatten the drawing onto opaque black so coverage becomes luminance
+    const [m, x] = canvas(c.width, c.height); x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height); x.drawImage(c, 0, 0); c = m;
+  }
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -36,7 +40,7 @@ export function paintWear() {
       x.fillRect(r() * 256, r() * 256, w, h);
     }
     for (let i = 0; i < 40; i++) { x.globalAlpha = 0.25 + r() * 0.5; x.beginPath(); x.arc(r() * 256, r() * 256, 4 + r() * 22, 0, 7); x.fill(); }
-    return tex(c, { srgb: false, repeat: true });
+    return tex(c, { srgb: false, repeat: true, mask: true });
   });
 }
 
@@ -46,7 +50,7 @@ export function stainTex(seed = 3) {
     const [c, x] = canvas(256, 256); const r = rng(seed);
     noiseBlob(x, 128, 128, 110, r, 0.22, '255,255,255', 70);
     for (let i = 0; i < 300; i++) { x.fillStyle = `rgba(255,255,255,${r() * 0.2})`; const a = r() * 7, d = r() * 100; x.fillRect(128 + Math.cos(a) * d, 128 + Math.sin(a) * d, 2, 2); }
-    return tex(c, { srgb: false });
+    return tex(c, { srgb: false, mask: true });
   });
 }
 
@@ -67,7 +71,7 @@ export function streakTex(seed = 5) {
     x.globalCompositeOperation = 'destination-in';
     const h = x.createLinearGradient(0, 0, 128, 0); h.addColorStop(0, 'rgba(0,0,0,0)'); h.addColorStop(0.15, 'rgba(0,0,0,1)'); h.addColorStop(0.85, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)');
     x.fillStyle = h; x.fillRect(0, 0, 128, 256);
-    return tex(c, { srgb: false });
+    return tex(c, { srgb: false, mask: true });
   });
 }
 
@@ -82,7 +86,7 @@ export function sootTex() {
       g.addColorStop(0, `rgba(255,255,255,${0.12 + r() * 0.12})`); g.addColorStop(1, 'rgba(255,255,255,0)');
       x.fillStyle = g; x.beginPath(); x.arc(px, py, rad, 0, 7); x.fill();
     }
-    return tex(c, { srgb: false });
+    return tex(c, { srgb: false, mask: true });
   });
 }
 
@@ -110,7 +114,7 @@ export function chainlinkTex() {
     for (let i = -2; i < 4; i++) {
       x.beginPath(); for (let j = 0; j <= 4; j++) { const yy = j * 32; const xx = i * s + (j % 2 ? 32 : 0); j ? x.lineTo(xx, yy) : x.moveTo(xx, yy); } x.stroke();
     }
-    return tex(c, { srgb: false, repeat: true });
+    return tex(c, { srgb: false, repeat: true, mask: true });
   });
 }
 
@@ -119,7 +123,7 @@ export function gridTex() {
   return memo('grid', () => {
     const [c, x] = canvas(64, 64);
     x.strokeStyle = '#fff'; x.lineWidth = 3; x.strokeRect(0, 0, 64, 64);
-    return tex(c, { srgb: false, repeat: true });
+    return tex(c, { srgb: false, repeat: true, mask: true });
   });
 }
 
@@ -143,15 +147,17 @@ export function grassTex(dry = false) {
 export function leafTex() {
   return memo('leaf', () => {
     const [c, x] = canvas(256, 256); const r = rng(41);
-    for (let i = 0; i < 260; i++) {
-      const a = r() * 7, d = Math.sqrt(r()) * 110;
-      const px = 128 + Math.cos(a) * d, py = 128 + Math.sin(a) * d * 0.8;
-      const t = r();
-      x.fillStyle = `rgb(${(110 + t * 90) | 0},${(90 + t * 50) | 0},${(30 + t * 20) | 0})`;
-      x.save(); x.translate(px, py); x.rotate(r() * 7); x.beginPath(); x.ellipse(0, 0, 5 + r() * 5, 2.5 + r() * 2, 0, 0, 7); x.fill(); x.restore();
+    x.strokeStyle = 'rgb(46,38,30)'; x.lineWidth = 1.5;
+    for (let i = 0; i < 7; i++) { x.beginPath(); x.moveTo(128, 200); const a = -Math.PI / 2 + (r() - 0.5) * 2.2; x.quadraticCurveTo(128 + Math.cos(a) * 50, 200 + Math.sin(a) * 60, 128 + Math.cos(a) * 110, 190 + Math.sin(a) * 150); x.stroke(); }
+    for (let k = 0; k < 9; k++) {
+      const cx = 40 + r() * 176, cy = 30 + r() * 150;
+      for (let i = 0; i < 22; i++) {
+        const a = r() * 7, d = Math.sqrt(r()) * 26;
+        const t = r();
+        x.fillStyle = `rgb(${(96 + t * 70) | 0},${(88 + t * 46) | 0},${(44 + t * 22) | 0})`;
+        x.save(); x.translate(cx + Math.cos(a) * d, cy + Math.sin(a) * d); x.rotate(r() * 7); x.beginPath(); x.ellipse(0, 0, 4 + r() * 3, 2 + r() * 1.5, 0, 0, 7); x.fill(); x.restore();
+      }
     }
-    x.strokeStyle = 'rgb(50,40,30)'; x.lineWidth = 2;
-    for (let i = 0; i < 12; i++) { x.beginPath(); x.moveTo(128, 128); const a = r() * 7; x.lineTo(128 + Math.cos(a) * 100, 128 + Math.sin(a) * 90); x.stroke(); }
     return tex(c);
   });
 }
@@ -211,8 +217,8 @@ export function posterTex() {
     for (let i = 0; i < 8; i++) {
       const cx = (i % 4) * 256, cy = Math.floor(i / 4) * 256;
       const hue = r() * 360;
-      x.fillStyle = i === 5 ? '#c8b89a' : `hsl(${hue},${20 + r() * 30}%,${45 + r() * 30}%)`; x.fillRect(cx + 8, cy + 8, 240, 240);
-      x.fillStyle = `hsl(${(hue + 180) % 360},30%,20%)`; x.fillRect(cx + 30, cy + 40, 196, 110 * r() + 40);
+      x.fillStyle = i === 5 ? '#c8b89a' : `hsl(${hue},${10 + r() * 18}%,${45 + r() * 25}%)`; x.fillRect(cx + 8, cy + 8, 240, 240);
+      x.fillStyle = `hsl(${(hue + 180) % 360},15%,22%)`; x.fillRect(cx + 30, cy + 40, 196, 110 * r() + 40);
       x.fillStyle = i === 5 ? '#901010' : '#1a1a1a'; x.font = 'bold 36px Arial'; x.textAlign = 'center'; x.fillText(texts[i], cx + 128, cy + 210, 220);
       for (let k = 0; k < 60; k++) { x.fillStyle = `rgba(230,225,210,${r() * 0.4})`; x.fillRect(cx + 8 + r() * 240, cy + 8 + r() * 240, 3 + r() * 20, 2 + r() * 8); }
       x.clearRect(cx + 8 + r() * 200, cy + 150 + r() * 60, 50 + r() * 60, 40); // torn
@@ -247,5 +253,33 @@ export function backdropWindowTex() {
       x.fillStyle = '#9a9a9a'; x.fillRect(i * 128 + 24, j * 128 + 104, 80, 6);
     }
     return tex(c, { repeat: true });
+  });
+}
+
+/** Balcony railing: vertical balusters between rails (alpha in texture alpha). 1 tile = 1 m wide x 1 m tall. */
+export function railingTex() {
+  return memo('rail', () => {
+    const [c, x] = canvas(128, 128);
+    x.fillStyle = '#fff';
+    x.fillRect(0, 0, 128, 9); x.fillRect(0, 112, 128, 6);
+    for (let i = 0; i < 8; i++) x.fillRect(i * 16 + 6, 0, 4, 128);
+    // a bent/missing baluster for irregularity
+    x.clearRect(3 * 16 + 6, 60, 4, 50);
+    return tex(c, { repeat: true });
+  });
+}
+
+/** Paver joint lines (mask): 1 tile = 2 m, running-bond slabs 1.0 x 0.5 m with chipped corners. */
+export function paverTex() {
+  return memo('paver', () => {
+    const [c, x] = canvas(256, 256); const r = rng(12);
+    x.strokeStyle = '#fff'; x.lineWidth = 2.2;
+    for (let row = 0; row < 4; row++) {
+      const y = row * 64; x.beginPath(); x.moveTo(0, y); x.lineTo(256, y); x.stroke();
+      for (let k = 0; k < 3; k++) { const xx = (k * 128 + (row % 2) * 64) % 256; x.beginPath(); x.moveTo(xx, y); x.lineTo(xx, y + 64); x.stroke(); }
+    }
+    for (let i = 0; i < 40; i++) { x.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.5})`; x.beginPath(); x.arc(Math.round(r() * 4) * 64 + (r() - 0.5) * 8, Math.round(r() * 4) * 64 + (r() - 0.5) * 8, 2 + r() * 6, 0, 7); x.fill(); }
+    for (let i = 0; i < 12; i++) { x.strokeStyle = `rgba(255,255,255,${0.3 + r() * 0.4})`; x.lineWidth = 1; x.beginPath(); let px = r() * 256, py = r() * 256; x.moveTo(px, py); for (let k = 0; k < 5; k++) { px += (r() - 0.5) * 40; py += (r() - 0.5) * 40; x.lineTo(px, py); } x.stroke(); }
+    return tex(c, { srgb: false, repeat: true, mask: true });
   });
 }

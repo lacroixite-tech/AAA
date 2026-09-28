@@ -34,10 +34,16 @@ function testProps(game) {
   game.scene.add(g);
 }
 
+// Poses in the real level (street runs north-south along x~0; sun is ~20deg left of north, low).
+// light_*_test variants use the procedural test props (only spawned when the level is sparse).
+const hideVM = (game) => { if (game.weapons?.viewmodel) game.weapons.viewmodel.visible = false; };
 export default {
-  light_golden: { pos: [0, 1.65, 22], yaw: 0.349, pitch: 0.06, setup: (g) => testProps(g) },
-  light_away: { pos: [-3, 1.65, -28], yaw: 0.349 + Math.PI, pitch: -0.04, setup: (g) => testProps(g) },
-  light_shadow_detail: { pos: [30.5, 1.55, 10.2], yaw: -1.35, pitch: -0.38, setup: (g) => testProps(g) },
-  light_ao: { pos: [30.5, 1.55, 10.2], yaw: -1.35, pitch: -0.38, setup: (g) => { testProps(g); g.post.debugView = 'ao'; } },
-  light_sky: { pos: [0, 1.65, 22], yaw: 0.349 + 1.2, pitch: 0.35, setup: (g) => testProps(g) },
+  light_golden: { pos: [1.8, 1.7, 44], yaw: 0.26, pitch: 0.07, setup: (g) => { testProps(g); } },
+  light_away: { pos: [-2.5, 1.7, -40], yaw: Math.PI - 0.12, pitch: -0.02, setup: (g) => { testProps(g); } },
+  light_shadow_detail: { pos: [13.5, 1.75, -12.5], yaw: -0.72, pitch: -0.42, setup: (g) => { testProps(g); hideVM(g); } },
+  light_sky: { pos: [1.8, 1.7, 44], yaw: 0.26 + 1.3, pitch: 0.4, setup: (g) => { testProps(g); hideVM(g); } },
+  light_ao: { pos: [13.5, 1.75, -12.5], yaw: -0.72, pitch: -0.42, setup: (g) => { testProps(g); hideVM(g); g.post.debugView = 'ao'; } },
+  light_smoke: { pos: [0, 1.65, 22], yaw: -0.2, pitch: 0.22, setup: (g) => { testProps(g); hideVM(g); } },
+  light_test_golden: { pos: [0, 1.65, 22], yaw: 0.349, pitch: 0.06, setup: (g) => testProps(g) },
+  light_test_detail: { pos: [30.5, 1.55, 10.2], yaw: -1.35, pitch: -0.38, setup: (g) => testProps(g) },
 };
