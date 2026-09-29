@@ -71,10 +71,10 @@ const DEFS = {
     },
     reload: { tac: 2.25, empty: 2.85 },
     adsTime: 0.24, zoom: 1.32, vmFov: 54, vmFovAds: 34,
-    hip: { p: [0.118, -0.118, -0.3], r: [0.03, 0.055, -0.035] },
+    hip: { p: [0.128, -0.112, -0.33], r: [0.035, 0.025, -0.01] },
     ads: { eye: 0.15, sightS: 0.042, sightY: 0.0635 },
     sprint: { p: [0.085, -0.1, -0.21], r: [-0.3, 0.42, -0.12] },
-    elbowR: [0.3, -0.4, 0.12], elbowL: [-0.3, -0.36, -0.12],
+    elbowR: [0.3, -0.45, 0.08], elbowL: [-0.06, -0.58, -0.12],
   },
   pistol: {
     name: 'M18', magSize: 17, reserve: 85, rpm: 450, modes: ['semi'],
@@ -101,7 +101,7 @@ function riflePoses() {
   }, { depth: 0.05, off: 0.021 });
   P.rGrip.t = [0, 0, 0, 0.35, 0.25]; P.rGrip.tw = [-0.75, 0.25, -0.6];
   // left hand: palm up under the handguard, fingers across/up the right side, thumb along the left
-  P.lGuard = handPose([0.011, -0.031, Z(0.36)], [0.75, 0.1, -0.66], [0, -1, 0], {
+  P.lGuard = handPose([0.011, -0.031, Z(0.335)], [0.75, 0.1, -0.66], [0, -1, 0], {
     index: [1.1, 1.2, 0.6, 0], middle: [1.15, 1.2, 0.6, 0], ring: [1.2, 1.2, 0.6, 0], pinky: [1.25, 1.1, 0.6, 0],
   }, { depth: 0.05, off: 0.022 });
   P.lGuard.t = [0, 0, 0, 0.15, 0.1]; P.lGuard.tw = [0.12, 0.22, -0.96];

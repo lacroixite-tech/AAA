@@ -356,7 +356,7 @@ export function cable(ctx, a, b, sag = 0.8, r = 0.012) {
     const t = i / n; const p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p);
   }
   const curve = new THREE.CatmullRomCurve3(pts);
-  ctx.batch.add(new THREE.TubeGeometry(curve, 20, r, 3), 'rubber', null, { collider: false, shadow: true, tint: 0x505050 });
+  ctx.batch.add(new THREE.TubeGeometry(curve, 20, Math.max(r, 0.012), 4), 'cable', null, { collider: false, uv: 'keep' });
 }
 
 export function bench(ctx, x, z, yaw, broken = false) {

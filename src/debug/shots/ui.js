@@ -30,7 +30,7 @@ export default {
           hud._shotDmg = true;
         }
         for (const d of hud._dmg) d.t = 0.2;
-        p.health = 62; p.lastDamageTime = game.time; hud._hitFlash = 0;
+        p.health = 72; p.lastDamageTime = game.time; hud._hitFlash = 0;
         const yaw = p.yaw;
         const pts = [[-0.35, 26], [0.2, 34], [0.9, 18]];
         pts.forEach(([a, r], i) => {

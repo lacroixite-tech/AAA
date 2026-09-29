@@ -313,7 +313,7 @@ export class HUD {
     const dmgT = clamp(1 - hp01, 0, 1);
     this._hitFlash = Math.max(0, this._hitFlash - dt * 2.2);
     this._vig = dmgT;
-    const vigA = Math.min(1, Math.pow(clamp((dmgT - 0.18) / 0.82, 0, 1), 1.1) * 1.1 + this._hitFlash * 0.3);
+    const vigA = Math.min(1, Math.pow(clamp((dmgT - 0.25) / 0.75, 0, 1), 1.4) * 1.1 + this._hitFlash * 0.3);
     e.vig.style.opacity = (vis || dead) ? vigA.toFixed(3) : 0;
     e.blood.style.opacity = (vis ? clamp((dmgT - 0.35) * 1.6, 0, 1) * (0.85 + 0.15 * Math.sin(t * 6)) : 0).toFixed(3);
     g.post?.setDamage?.(Math.min(1, dmgT * 1.1 + this._hitFlash * 0.2));
@@ -376,7 +376,7 @@ export class HUD {
     // objective / wave
     const alive = this._aliveCount();
     const wave = g.enemies?.wave ?? g.enemies?.waveNumber ?? 1;
-    e.wave.textContent = pad2(wave);
+    e.wave.textContent = pad2(Math.max(1, wave));
     e.hostiles.textContent = alive == null ? '--' : pad2(alive);
     e.scoreEl.textContent = (g.enemies?.score ?? this.score).toLocaleString('en-US');
     const objText = this.objective.text;

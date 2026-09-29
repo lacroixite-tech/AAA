@@ -11,19 +11,26 @@ export function buildGround(ctx) {
   // base terrain (dirt), large
   B.add(box(900, 1, 900), 'dirt', mat(0, -0.5, 0), { surface: 'dirt', shadow: false });
   // asphalt roads
-  B.add(box(12, 0.1, EXT * 2), 'asphalt', mat(0, -0.03, 0), { surface: 'concrete' });
-  for (const sx of [-1, 1]) B.add(box(EXT - 6, 0.1, 12), 'asphalt', mat(sx * (EXT + 6) / 2, -0.03, 0), { surface: 'concrete' });
+  B.add(box(12, 0.1, EXT * 2), 'asphalt', mat(0, -0.03, 0), { surface: 'concrete', tint: [1.55, 1.5, 1.45] });
+  for (const sx of [-1, 1]) B.add(box(EXT - 6, 0.1, 12), 'asphalt', mat(sx * (EXT + 6) / 2, -0.03, 0), { surface: 'concrete', tint: [1.55, 1.5, 1.45] });
   // asphalt patch repairs (slightly different tone), crack networks, oil
   for (let i = 0; i < 26; i++) {
     const alongZ = r() < 0.6; const a = (r() - 0.5) * 130, b = (r() - 0.5) * 10;
     const w = 1 + r() * 3, d = 1 + r() * 4;
     const [x, z] = alongZ ? [b, a] : [a, b];
-    B.add(FLAT(w, d), 'asphalt', mat(x, 0.024, z, 0, r() * 0.3), { collider: false, tint: r() < 0.5 ? 0x8a8a88 : 0xc8c8c4, shadow: false });
+    B.add(FLAT(w, d), 'asphalt', mat(x, 0.024, z, 0, r() * 0.3), { collider: false, tint: r() < 0.5 ? [1.2, 1.2, 1.18] : [1.9, 1.85, 1.8], shadow: false });
   }
   for (let i = 0; i < 40; i++) {
     const alongZ = r() < 0.6; const a = (r() - 0.5) * 140, b = (r() - 0.5) * 11;
     const [x, z] = alongZ ? [b, a] : [a, b]; const s = 1 + r() * 3;
     B.add(FLAT(s, s), r() < 0.3 ? 'decal_oil' : 'decal_stain', mat(x, 0.028, z, 0, r() * 6), { collider: false, uv: 'keep', shadow: false });
+  }
+  // wind-blown dust / sand drifts: along curbs and scattered over the lanes
+  for (let i = 0; i < 70; i++) {
+    const alongZ = r() < 0.6, edge = r() < 0.6; const a = (r() - 0.5) * 150;
+    const b = edge ? (r() < 0.5 ? -1 : 1) * (5.3 + r() * 0.5) : (r() - 0.5) * 10;
+    const [x, z] = alongZ ? [b, a] : [a, b]; const w = edge ? 1.2 + r() : 2 + r() * 3, d = edge ? 3 + r() * 4 : 2 + r() * 3;
+    B.add(FLAT(alongZ ? w : d, alongZ ? d : w), 'decal_dust', mat(x, 0.027, z, 0, (r() - 0.5) * 0.3), { collider: false, uv: 'keep', shadow: false });
   }
   // sidewalks (raised 0.15) with curbs
   const sw = (x0, x1, z0, z1, tint) => {

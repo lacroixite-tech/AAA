@@ -36,12 +36,12 @@ function sunDir(game) {
   return new THREE.Vector3(0.6, 0.27, 0.4).normalize();
 }
 
-function build(game) {
+function build(game, subset) {
   if (game.__matBoard) return game.__matBoard;
   const t0 = performance.now();
   const M = game.materials;
   const only = game.params?.get?.('mats');
-  const names = only ? only.split(',') : M.names;
+  const names = only ? only.split(',') : (subset || M.names);
   const s = sunDir(game);
   const sunAz = Math.atan2(s.x, s.z);
   const faceAz = sunAz + THREE.MathUtils.degToRad(68); // wall normal azimuth: sun rakes across at grazing angle
@@ -80,6 +80,7 @@ function build(game) {
 }
 
 function aim(game, board, localPos, dist, yawOff = 0, pitch = 0) {
+  if (game.weapons?.viewmodel) game.weapons.viewmodel.visible = false;
   const target = localPos.clone().applyMatrix4(board.root.matrixWorld);
   const yaw = board.faceAz + yawOff;
   const dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
@@ -93,7 +94,7 @@ function aim(game, board, localPos, dist, yawOff = 0, pitch = 0) {
 function close(name, dist = 1.0, yawOff = 0.25, pitch = 0.0) {
   return {
     noCamera: true,
-    setup(game) { const b = build(game); aim(game, b, b.panels[name], dist, yawOff, pitch); },
+    setup(game) { const b = build(game, [name]); aim(game, b, b.panels[name], dist, yawOff, pitch); },
   };
 }
 

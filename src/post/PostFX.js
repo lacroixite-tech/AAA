@@ -98,12 +98,12 @@ void main() {
   for ( int y = 0; y < 8; y ++ ) for ( int x = 0; x < 8; x ++ ) {
     vec2 uv = ( vec2( x, y ) + 0.5 ) / 8.0;
     // centre-weighted metering
-    float w = 1.0 + 1.5 * exp( -dot( uv - 0.5, uv - 0.5 ) * 8.0 );
+    float w = ( 1.0 + 1.5 * exp( -dot( uv - 0.5, uv - 0.5 ) * 8.0 ) ) * mix( 1.0, 0.25, smoothstep( 0.45, 0.9, uv.y ) );
     vec3 c = texture2D( tSrc, uv ).rgb;
     s += log( max( dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ), 1e-4 ) ) * w;
   }
   float wsum = 0.0;
-  for ( int y = 0; y < 8; y ++ ) for ( int x = 0; x < 8; x ++ ) { vec2 uv = ( vec2( x, y ) + 0.5 ) / 8.0; wsum += 1.0 + 1.5 * exp( -dot( uv - 0.5, uv - 0.5 ) * 8.0 ); }
+  for ( int y = 0; y < 8; y ++ ) for ( int x = 0; x < 8; x ++ ) { vec2 uv = ( vec2( x, y ) + 0.5 ) / 8.0; wsum += ( 1.0 + 1.5 * exp( -dot( uv - 0.5, uv - 0.5 ) * 8.0 ) ) * mix( 1.0, 0.25, smoothstep( 0.45, 0.9, uv.y ) ); }
   float avg = s / wsum;
   float prev = texture2D( tPrev, vec2( 0.5 ) ).r;
   gl_FragColor = vec4( mix( prev, avg, uRate ), 0.0, 0.0, 1.0 );
@@ -172,7 +172,7 @@ void main() {
   }
   // exposure (manual * auto eye adaptation) + flash
   float avgL = exp( texture2D( tLuma, vec2( 0.5 ) ).r );
-  float auto_ = clamp( pow( uLumaRef / avgL, 0.4 ), 0.8, 1.4 );
+  float auto_ = clamp( pow( uLumaRef / avgL, 0.45 ), 0.85, 1.6 );
   col *= uExposure * mix( 1.0, auto_, uAutoExp ) * ( 1.0 + uFlash * 3.0 );
   // damage: desaturate + drain toward red at the edges (pre tonemap)
   float L = lum( col );
@@ -256,7 +256,7 @@ export class PostFX {
     this.exposure = 0.85;
     this.ads = 0; this.damage = 0; this._flash = 0; this._flashDecay = 12;
     this.aoStrength = 0.85; this.bloomMix = 0.045; this.dirtStrength = 0.35;
-    this.caStrength = 0.004; this.grain = 0.035; this.vignette = 0.38;
+    this.caStrength = 0.0025; this.grain = 0.035; this.vignette = 0.38;
     this.raysEnabled = this.high; this.aoEnabled = this.high;
     this.bloomLevels = this.high ? 6 : 5;
 
@@ -308,8 +308,8 @@ export class PostFX {
       uRes: { value: new THREE.Vector2(W, H) }, uTime: { value: 0 }, uExposure: { value: 1 }, uBloomMix: { value: 0.04 }, uDirt: { value: 0.3 },
       uAO: { value: 0.8 }, uBloomNorm: { value: 1 / 6 }, uRaysI: { value: 0 }, uRaysColor: { value: new THREE.Color(1.0, 0.75, 0.5) }, uCA: { value: 0.006 },
       uADS: { value: 0 }, uDamage: { value: 0 }, uFlash: { value: 0 }, uGrain: { value: 0.035 }, uVignette: { value: 0.35 },
-      uLift: { value: new THREE.Vector3(0.002, 0.005, 0.009) }, tLuma: { value: null }, uAutoExp: { value: 1 }, uLumaRef: { value: 0.19 }, uFlare: { value: 0.12 }, uDebug: { value: 0 }, uGlare: { value: 0.18 }, tFlare: { value: null }, uGamma: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
-      uGain: { value: new THREE.Vector3(1.02, 1.0, 0.96) }, uSat: { value: 0.86 }, uContrast: { value: 1.14 },
+      uLift: { value: new THREE.Vector3(0.008, 0.011, 0.016) }, tLuma: { value: null }, uAutoExp: { value: 1 }, uLumaRef: { value: 0.19 }, uFlare: { value: 0.12 }, uDebug: { value: 0 }, uGlare: { value: 0.18 }, tFlare: { value: null }, uGamma: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
+      uGain: { value: new THREE.Vector3(1.02, 1.0, 0.96) }, uSat: { value: 0.86 }, uContrast: { value: 1.08 },
     });
     this.grade = this.compMat.uniforms; // tweakable
     this.smaa = new SMAAPass();

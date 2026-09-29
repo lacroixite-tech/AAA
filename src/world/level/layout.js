@@ -76,6 +76,14 @@ export function buildLayout(ctx) {
   buildBlock(ctx, { ...lod, rect: [66, 110, 10, 40], floors: 5, gh: 3.2, fh: 2.8, style: 'soviet', wallTint: 0xc0c4c8, sides: { nz: 'front', nx: 'front' }, seed: 66 });
   buildBlock(ctx, { ...lod, rect: [-110, -68, -40, -10], floors: 3, gh: 3.4, fh: 3.0, style: 'soviet', wall: 'brick', sides: { pz: 'front', px: 'front' }, seed: 67 });
   buildBlock(ctx, { ...lod, rect: [-110, -68, 10, 40], floors: 4, gh: 3.4, fh: 3.0, style: 'old', wallTint: 0xd8c8b0, sides: { nz: 'front', px: 'front' }, roof: 'gable', seed: 68 });
+  // deeper street vistas so the view down each street terminates in city, not void
+  const far = { ...lod, damage: 0.3, balconies: false };
+  let sd = 90;
+  for (const [z0, z1, sx] of [[-175, -124, -1], [-175, -124, 1], [124, 175, -1], [124, 175, 1]]) buildBlock(ctx, { ...far, rect: sx < 0 ? [-26, -10, z0, z1] : [10, 26, z0, z1], floors: 4 + (sd % 3), gh: 3.3, fh: 2.9, style: sd % 2 ? 'old' : 'soviet', wallTint: [0xd8ccb8, 0xc8c4bc, 0xe0c8a8][sd % 3], sides: sx < 0 ? { px: 'front' } : { nx: 'front' }, seed: sd++ });
+  for (const [x0, x1, zs] of [[-175, -114, -1], [-175, -114, 1], [114, 175, -1], [114, 175, 1]]) buildBlock(ctx, { ...far, rect: zs < 0 ? [x0, x1, -26, -10] : [x0, x1, 10, 26], floors: 4 + (sd % 2), gh: 3.3, fh: 2.9, style: 'soviet', wallTint: [0xd0ccc4, 0xd8c8b0][sd % 2], sides: zs < 0 ? { pz: 'front' } : { nz: 'front' }, seed: sd++ });
+  // street-terminating blocks
+  buildBlock(ctx, { ...far, rect: [-30, 30, -205, -185], floors: 6, gh: 3.4, fh: 2.9, style: 'soviet', wallTint: 0xc8c0b4, sides: { pz: 'front' }, seed: sd++ });
+  buildBlock(ctx, { ...far, rect: [-30, 30, 185, 205], floors: 5, gh: 3.4, fh: 2.9, style: 'old', wallTint: 0xd8c4a4, sides: { nz: 'front' }, roof: 'gable', seed: sd++ });
   buildBackdrop(ctx);
 
   // ------------------------------------------------------------------ SW industrial yard
@@ -145,8 +153,8 @@ export function buildLayout(ctx) {
     }
   }
   // broken contact wire dangling to the street near the intersection
-  P.cable(ctx, new THREE.Vector3(-2.4, 6.1, -12), new THREE.Vector3(-1.2, 0.05, -4), 1.8, 0.008);
-  P.cable(ctx, new THREE.Vector3(2.4, 6.1, 14), new THREE.Vector3(3.8, 0.05, 6.5), 2.0, 0.008);
+  P.cable(ctx, new THREE.Vector3(-7, 8.8, -12), new THREE.Vector3(-8.6, 0.2, -9.6), 0.6, 0.01);
+  P.cable(ctx, new THREE.Vector3(7, 8.8, 34), new THREE.Vector3(8.8, 0.2, 31.5), 0.5, 0.01);
   // wires from poles to buildings
   for (const [z, s] of [[-54, -1], [-30, -1], [34, 1], [54, 1]]) P.cable(ctx, new THREE.Vector3(s * 7, 8.2, z), new THREE.Vector3(s * 10, 7.6, z + 4), 0.4, 0.008);
   for (const [x, z, yaw] of [[-8.8, -42, HP], [8.8, -18, -HP], [-8.8, 26, HP], [8.8, 44, -HP], [-8.8, 6.9 + 40, HP], [-24, 8.8, 0], [30, -8.8, PI], [-44, -8.8, PI], [44, 8.8, 0]]) P.streetLamp(ctx, x, z, yaw, { broken: r() < 0.3 });
@@ -166,9 +174,13 @@ export function buildLayout(ctx) {
   P.sandbags(ctx, 3.5, 15, 0, 3.6, 5, { seed: 21, curve: 0.3 });
   P.sandbags(ctx, -3.8, -12.5, PI, 3.6, 5, { seed: 22, curve: 0.3 });
   P.hesco(ctx, -2.8, -2.5, 0, 3); P.hesco(ctx, 1.9, 2.8, 0.05, 2);
-  P.hedgehog(ctx, -4.5, 30, 0.4); P.hedgehog(ctx, 5, -8, 1.1); P.hedgehog(ctx, -40, -2, 0.2);
+  P.hedgehog(ctx, 0.2, 26.5, 0.4); P.hedgehog(ctx, 5, -8, 1.1); P.hedgehog(ctx, -40, -2, 0.2);
   P.crate(ctx, 7.8, 0.15, 25, 0.3, { military: true, s: [1.2, 0.5, 0.6] }); P.crate(ctx, 7.9, 0.65, 25, 0.35, { military: true, s: [1.2, 0.5, 0.6] });
   P.trashBags(ctx, -8.8, 40, 7, 9); P.trashBags(ctx, 9, -40, 5, 10); P.trashBags(ctx, 8.8, 30.5, 4, 11);
+  // facade spill: rubble heaps under shell-damaged walls, and debris strewn onto the road
+  for (const [x, z, rx, rz, h, sd] of [[-9, -37, 1.6, 2.6, 0.8, 61], [9.1, 29, 1.4, 2.4, 0.7, 62], [-8.9, 11.5, 1.2, 1.8, 0.6, 63], [9, -20.5, 1.3, 2.2, 0.7, 64], [-9.2, 51, 1.5, 2.5, 0.9, 65], [-3.5, -26, 1.3, 1.2, 0.35, 66], [2.5, 21, 1.0, 1.4, 0.3, 67]]) P.rubble(ctx, x, z, { rx, rz, h, seed: sd, chunks: 22, block: h > 0.5 });
+  P.car(ctx, -4.6, -48, HP + 0.25, { kind: 'hatch', burnt: true, seed: 17 });
+  P.wreckedTruck(ctx, -3.5, 31.5, HP + 0.45, { seed: 9 });
   // sidewalk trees in pits
   for (const [x, z, s] of [[-8.3, -34, 1], [-8.3, 34, 2], [8.3, 26, 3], [8.3, -48, 4], [-8.3, -50, 5]]) {
     P.tree(ctx, x, z, { seed: 10 + s, h: 7 + s % 3, leaves: 0.4 });

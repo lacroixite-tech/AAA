@@ -306,13 +306,24 @@ float plume( vec2 uv ) {
 void main() {
   float d = plume( vUv );
   if ( d < 0.003 ) discard;
-  // lighting: sample toward the sun (projected on the billboard plane)
-  vec2 sd = normalize( vec2( dot( ENV_SUN_DIR, uRight ), ENV_SUN_DIR.y ) + 1e-4 ) * 0.025;
-  float ds = plume( vUv + sd ) + plume( vUv + sd * 2.0 );
-  float lit = exp( -ds * 1.6 );
-  vec3 amb = vec3( 0.05, 0.052, 0.058 );
-  vec3 col = amb * ( 1.0 - 0.4 * d ) + uSunColor * lit * lit * 0.018;
-  col *= mix( vec3( 0.55, 0.5, 0.45 ), vec3( 1.0 ), smoothstep( 0.0, 0.3, vUv.y ) ); // sooty base
+  // pseudo-volumetric shading: normal from the density gradient (billboard plane + view axis)
+  vec2 e = vec2( 0.006, 0.0 );
+  float gx = plume( vUv + e.xy ) - plume( vUv - e.xy );
+  float gy = plume( vUv + e.yx ) - plume( vUv - e.yx );
+  vec3 fwdV = normalize( cross( uRight, vec3( 0.0, 1.0, 0.0 ) ) ); // toward camera-ish
+  vec3 N = normalize( -gx * 6.0 * uRight - gy * 6.0 * vec3( 0.0, 1.0, 0.0 ) + fwdV * ( 0.35 + d ) );
+  float ndl = dot( N, ENV_SUN_DIR );
+  float wrap = clamp( ( ndl + 0.35 ) / 1.35, 0.0, 1.0 );
+  // self shadowing toward the sun
+  vec2 sd = normalize( vec2( dot( ENV_SUN_DIR, uRight ), ENV_SUN_DIR.y ) + 1e-4 ) * 0.03;
+  float ds = plume( vUv + sd ) + plume( vUv + sd * 2.5 );
+  float lit = wrap * exp( -ds * 0.9 );
+  float albedo = mix( 0.10, 0.30, smoothstep( 0.05, 0.6, vUv.y ) ); // sooty black base -> greyer, thinner top
+  vec3 skyAmb = mix( vec3( 0.20, 0.19, 0.18 ), vec3( 0.42, 0.47, 0.56 ), N.y * 0.5 + 0.5 );
+  vec3 col = albedo * ( skyAmb * ( 1.0 - 0.35 * d ) + uSunColor * lit * 0.32 );
+  // backlit silver edge where the plume is thin
+  float mu = max( dot( normalize( vWorldPos - cameraPosition ), ENV_SUN_DIR ), 0.0 );
+  col += uSunColor * pow( mu, 6.0 ) * ( 1.0 - d ) * 0.05;
   // ember glow at the base
   col += vec3( 2.5, 0.8, 0.2 ) * smoothstep( 0.035, 0.0, vUv.y ) * d;
   vec3 ray = vWorldPos - cameraPosition;
@@ -320,7 +331,6 @@ void main() {
   vec3 rd = ray / dist;
   float fa = envFogAmount( cameraPosition, rd, dist, uFogDensity );
   col = mix( col, envFogColor( rd, uFogColor ), fa * 0.45 );
-  col = mix( col, col * 1.6 + 0.02, smoothstep( 0.35, 0.8, vUv.y ) ); // thinner, lighter at the top
   gl_FragColor = vec4( col, smoothstep( 0.0, 0.75, d ) * 0.96 );
 }`;
 
@@ -498,7 +508,7 @@ export class Environment {
     pm.dispose(); mat.dispose(); dome.geometry.dispose();
     this.envMap = rt.texture;
     this.game.scene.environment = this.envMap;
-    this.game.scene.environmentIntensity = 0.7;
+    this.game.scene.environmentIntensity = 1.1;
   }
 
   /** CPU mirror of the fog function (for sprites/fx that do their own fogging). */

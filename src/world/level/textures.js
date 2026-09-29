@@ -127,19 +127,27 @@ export function gridTex() {
   });
 }
 
-/** Grass tuft card: color with alpha. */
+/** Grass tuft card: returns {map, alpha}. Blades drawn into color (on opaque bg) + separate luminance mask. */
 export function grassTex(dry = false) {
   return memo('grass' + dry, () => {
-    const [c, x] = canvas(256, 256); const r = rng(dry ? 31 : 21);
-    for (let i = 0; i < 140; i++) {
-      const bx = 20 + r() * 216, h = 60 + r() * 190, lean = (r() - 0.5) * 70;
+    const [c, x] = canvas(256, 256); const [cm, xm] = canvas(256, 256); const r = rng(dry ? 31 : 21);
+    x.fillStyle = dry ? 'rgb(120,108,70)' : 'rgb(86,92,52)'; x.fillRect(0, 0, 256, 256);
+    xm.fillStyle = '#000'; xm.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 110; i++) {
+      const bx = 30 + r() * 196, h = 50 + r() * 200, lean = (r() - 0.5) * 90;
       const t = r();
-      const col = dry ? [150 + t * 60, 130 + t * 50, 80 + t * 30] : [80 + t * 70, 95 + t * 60, 40 + t * 30];
-      if (!dry && r() < 0.3) { col[0] += 50; col[1] += 25; }
-      x.strokeStyle = `rgb(${col.map((v) => v | 0).join(',')})`; x.lineWidth = 1.5 + r() * 2.5;
-      x.beginPath(); x.moveTo(bx, 256); x.quadraticCurveTo(bx + lean * 0.3, 256 - h * 0.6, bx + lean, 256 - h); x.stroke();
+      const col = dry ? [118 + t * 50, 104 + t * 40, 64 + t * 22] : [70 + t * 45, 82 + t * 40, 40 + t * 20];
+      if (!dry && r() < 0.35) { col[0] += 40; col[1] += 22; col[2] += 5; }
+      const w = 1.5 + r() * 2.5;
+      for (const [ctx2, style] of [[x, `rgb(${col.map((v) => v | 0).join(',')})`], [xm, '#fff']]) {
+        ctx2.strokeStyle = style; ctx2.lineWidth = w; ctx2.lineCap = 'round';
+        ctx2.beginPath(); ctx2.moveTo(bx, 256); ctx2.quadraticCurveTo(bx + lean * 0.2, 256 - h * 0.6, bx + lean, 256 - h); ctx2.stroke();
+      }
     }
-    return tex(c);
+    // darken the base (self-shadowing)
+    const g = x.createLinearGradient(0, 150, 0, 256); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(20,18,10,0.6)');
+    x.fillStyle = g; x.fillRect(0, 150, 256, 106);
+    return { map: tex(c), alpha: tex(cm, { srgb: false }) };
   });
 }
 

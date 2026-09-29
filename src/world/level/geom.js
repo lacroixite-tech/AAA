@@ -131,7 +131,7 @@ export class Batch {
     }
     S.pos.n = po; S.nor.n = po; S.uv.n = uo;
     if (S.col) {
-      _c.set(opts.tint ?? 0xffffff); const ca = S.col.a; let co = S.col.n;
+      if (Array.isArray(opts.tint)) _c.setRGB(...opts.tint); else _c.set(opts.tint ?? 0xffffff); const ca = S.col.a; let co = S.col.n;
       for (let i = 0; i < n; i++) { ca[co] = _c.r; ca[co + 1] = _c.g; ca[co + 2] = _c.b; co += 3; }
       S.col.n = co;
     }
