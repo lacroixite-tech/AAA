@@ -62,6 +62,7 @@ export class Game {
     addEventListener('resize', () => this.resize());
     this.timer = new THREE.Timer(); this.timer.connect?.(document);
     this.frame = 0;
+    this.shotFrames = +(this.params.get('frames') || 90);
     renderer.setAnimationLoop(() => this.tick());
   }
 
@@ -78,9 +79,11 @@ export class Game {
     this.time += dt;
     for (const s of this.systems) s.update?.(dt);
     if (this.shotName) applyShot(this, this.shotName, this.frame);
-    this.post.render(dt);
+    // In screenshot mode only the last few frames are rendered (CPU WebGL is slow);
+    // simulation still runs every frame so timing-driven shots stay deterministic.
+    if (!this.shotName || this.frame >= this.shotFrames - 8 || this.params.has('renderAll')) this.post.render(dt);
     this.input.endFrame();
     this.frame++;
-    if (this.shotName && this.frame === 90) window.__READY = true;
+    if (this.shotName && this.frame === this.shotFrames) window.__READY = true;
   }
 }

@@ -26,7 +26,7 @@ try {
     page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push(`[${m.type()}] ${m.text()}`); });
     page.on('pageerror', (e) => errs.push(`[pageerror] ${e.message}`));
     const t0 = Date.now();
-    await page.goto(`${url}?shot=${encodeURIComponent(name)}&q=${opt.q || 'high'}`);
+    await page.goto(`${url}?shot=${encodeURIComponent(name)}&q=${opt.q || 'high'}${opt.frames ? '&frames=' + opt.frames : ''}`, { waitUntil: 'commit', timeout: 0 });
     try { await page.waitForFunction(() => window.__READY === true, null, { timeout: +(opt.timeout || 240000), polling: 500 }); }
     catch { errs.push('[timeout] window.__READY never set'); failed = true; }
     const file = path.join(out, `${name}.png`);
