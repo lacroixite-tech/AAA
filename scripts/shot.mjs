@@ -21,7 +21,7 @@ const browser = await chromium.launch({ executablePath: exe, args: ['--use-angle
 let failed = false;
 try {
   for (const name of names) {
-    const page = await browser.newPage({ viewport: { width: W, height: H } });
+    const page = await browser.newPage({ viewport: { width: W, height: H } }); page.setDefaultTimeout(0);
     const errs = [];
     page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push(`[${m.type()}] ${m.text()}`); });
     page.on('pageerror', (e) => errs.push(`[pageerror] ${e.message}`));
@@ -30,7 +30,7 @@ try {
     try { await page.waitForFunction(() => window.__READY === true, null, { timeout: +(opt.timeout || 240000), polling: 500 }); }
     catch { errs.push('[timeout] window.__READY never set'); failed = true; }
     const file = path.join(out, `${name}.png`);
-    await page.screenshot({ path: file });
+    await page.screenshot({ path: file, timeout: 0 });
     console.log(`${file}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
     for (const e of errs.slice(0, 20)) console.log('   ', e);
     await page.close();

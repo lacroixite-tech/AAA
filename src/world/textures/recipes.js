@@ -16,8 +16,11 @@ Surf surface(vec2 uv){
   float stain = smoothstep(0.45, 0.85, streak) * smoothstep(0.2, 0.7, fbmC(uv, 0.75, 3, 32.0) * 0.5 + 0.5);
   col *= mix(1.0, 0.55, grime * 0.7);
   col = mix(col, desat(col, 0.5) * vec3(0.62, 0.6, 0.58), stain * 0.75);
-  float soot = smoothstep(0.5, 0.9, warpC(uv, 0.6, 5, 1.5, 35.0) * 0.5 + 0.5);
-  col = mix(col, col * vec3(0.4, 0.38, 0.37), soot * 0.6);
+  float soot = smoothstep(0.4, 0.85, warpC(uv, 0.6, 5, 1.0, 35.0) * 0.5 + 0.5);
+  col = mix(col, col * vec3(0.42, 0.4, 0.39), soot * 0.7);
+  float fade = smoothstep(0.35, 0.75, fbmC(uv, 1.1, 4, 36.0) * 0.5 + 0.5);
+  col = mix(col, desat(col, 0.45) * 1.08, fade * 0.5);
+  col *= 0.9 + 0.12 * vnC(uv, 0.15, 37.0);
   float eff = smoothstep(0.62, 0.85, fbmC(uv, 0.4, 5, 33.0) * 0.5 + 0.5);
   col = mix(col, vec3(0.72, 0.70, 0.66), eff * (0.25 + 0.5 * mm) * 0.8);
   float dust = smoothstep(0.3, 0.9, vnC(uv, 0.02, 34.0)) * 0.12;

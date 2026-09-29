@@ -71,10 +71,10 @@ const DEFS = {
     },
     reload: { tac: 2.25, empty: 2.85 },
     adsTime: 0.24, zoom: 1.32, vmFov: 54, vmFovAds: 34,
-    hip: { p: [0.128, -0.112, -0.33], r: [0.035, 0.025, -0.01] },
+    hip: { p: [0.13, -0.11, -0.36], r: [0.035, 0.03, -0.015] },
     ads: { eye: 0.15, sightS: 0.042, sightY: 0.0635 },
     sprint: { p: [0.085, -0.1, -0.21], r: [-0.3, 0.42, -0.12] },
-    elbowR: [0.3, -0.45, 0.08], elbowL: [-0.06, -0.58, -0.12],
+    elbowR: [0.3, -0.45, 0.08], elbowL: [-0.3, -0.5, -0.1],
   },
   pistol: {
     name: 'M18', magSize: 17, reserve: 85, rpm: 450, modes: ['semi'],

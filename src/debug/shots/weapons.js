@@ -42,6 +42,12 @@ export default {
         sc.group.rotation.set(0, yaw - Math.PI / 2 + 0.22, 0);
         sc.group.children[0].rotation.set(0.305, 0, 0);
         sc.group.children[0].position.set(0, 0, 0.17);
+        // warm key + cool fill so the model reads even when the spot is in building shadow
+        const key = new THREE.SpotLight(0xffe2c0, 6, 4, 0.6, 0.6, 1.5);
+        key.position.copy(base).addScaledVector(fwd, 0.9).addScaledVector(right, -0.9); key.position.y = gy + 1.9;
+        key.target.position.set(base.x, gy + 0.78, base.z); game.scene.add(key, key.target);
+        const fill = new THREE.PointLight(0x9fb8d8, 1.2, 3, 1.5);
+        fill.position.copy(base).addScaledVector(fwd, 0.8).addScaledVector(right, 0.8); fill.position.y = gy + 1.0; game.scene.add(fill);
         game.__wcu = { base, gy };
       }
       const { base, gy } = game.__wcu;
@@ -50,6 +56,7 @@ export default {
       game.camera.position.copy(eye); game.camera.lookAt(target);
       game.camera.fov = 42; game.camera.updateProjectionMatrix();
       game.weapons.viewmodel.visible = false;
+      const hud = document.getElementById('ui-root'); if (hud) hud.style.display = 'none';
     },
   },
 };
