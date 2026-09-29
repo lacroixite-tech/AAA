@@ -105,7 +105,7 @@ export class Soldier {
     // velocity in char space
     const lv = this.vel.clone().applyAxisAngle(V(0, 1, 0), -this.yaw);
     a.vel.copy(lv);
-    a.lookAround = (this.state === 'patrol' || this.state === 'idle') && !this.faceTarget ? 1 : 0;
+    a.lookAround = !this.noLook && (this.state === 'patrol' || this.state === 'idle') && !this.faceTarget ? 1 : 0;
     this.root.position.copy(this.position); this.root.rotation.y = this.yaw;
     a.update(dt);
   }

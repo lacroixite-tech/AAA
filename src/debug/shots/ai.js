@@ -82,16 +82,16 @@ export default {
       const S = spawnOnce(game, 'close', () => {
         const pos = place(game, B, 1.6, 0.1);
         const camYaw = Math.atan2(B.p.x - pos.x, B.p.z - pos.z);
-        return [game.enemies.spawn(pos, { ai: false, yaw: camYaw + 0.55, loadout: 0 })];
+        return [game.enemies.spawn(pos, { ai: false, yaw: camYaw + 0.35, loadout: 0 })];
       });
       hideCrowd(game, S);
       const s = S[0];
       const target = B.p.clone().addScaledVector(B.right, 3).addScaledVector(B.fwd, 0.5); target.y = s.position.y + 1.5;
-      s.faceTarget = target; s.anim.ads = 1;
-      const head = s.position.clone(); head.y += 1.6;
-      const eye = B.p.clone().addScaledVector(B.fwd, 0.55).addScaledVector(B.right, 0.25); eye.y = head.y + 0.02;
-      snap(S); setCam(game, eye, head.clone().add(V(0, -0.1, 0)));
-      game.camera.fov = 45; game.camera.updateProjectionMatrix();
+      s.faceTarget = null; s.anim.ads = 0; s.noLook = true;
+      const head = s.position.clone(); head.y += 1.55;
+      const eye = B.p.clone().addScaledVector(B.fwd, 0.35).addScaledVector(B.right, -0.2); eye.y = head.y + 0.02;
+      snap(S); setCam(game, eye, head.clone().add(V(0, -0.12, 0)));
+      game.camera.fov = 38; game.camera.updateProjectionMatrix();
     },
   },
   ai_combat: {
@@ -100,23 +100,27 @@ export default {
       const sp = game.level?.playerSpawn; const yaw0 = sp?.yaw ?? 0;
       const B = { p: (sp?.position || V(0, 0, 20)).clone(), yaw: yaw0, fwd: V(-Math.sin(yaw0), 0, -Math.cos(yaw0)), right: V(Math.cos(yaw0), 0, -Math.sin(yaw0)) };
       const S = spawnOnce(game, 'combat', () => {
-        const out = [];
-        const nav = game.enemies.nav;
-        const cam = B.p.clone(); cam.y += 1.6;
-        const covers = (nav?.cover || []).filter((c) => {
-          const d = c.p.distanceTo(B.p); if (d < 7 || d > 22) return false;
-          const to = V().subVectors(B.p, c.p).setY(0).normalize();
-          return -to.dot(c.n) > 0.5 && nav.los(V(c.p.x, c.p.y + 1.55, c.p.z), cam);
-        }).sort((a, b) => a.p.distanceTo(B.p) - b.p.distanceTo(B.p));
+        // find real cover in front of the camera: obstacles hit at knee height 6-16 m away; soldier goes just behind
+        const out = []; const col = game.collision; const g0 = ground(game, B.p.x, B.p.z, B.p.y);
+        const cands = [];
+        for (let a = -0.45; a <= 0.45; a += 0.05) {
+          const d = B.fwd.clone().applyAxisAngle(V(0, 1, 0), a);
+          const h = col?.raycast?.(V(B.p.x, g0 + 0.6, B.p.z), d, 16, { dynamic: false });
+          if (!h || h.distance < 6) continue;
+          const hi = col.raycast(V(B.p.x, g0 + 1.35, B.p.z), d, 18, { dynamic: false });
+          const low = !hi || hi.distance > h.distance + 1.2;
+          const pos = V(B.p.x, 0, B.p.z).addScaledVector(d, h.distance + 0.75); pos.y = ground(game, pos.x, pos.z, g0);
+          cands.push({ pos, low, a });
+        }
         const picks = [];
-        for (const c of covers) { if (picks.every((p) => p.p.distanceTo(c.p) > 2.5)) picks.push(c); if (picks.length >= 3) break; }
-        const fall = [[9, -2.5], [12, 2.2], [15, -0.2]];
+        for (const c of cands.sort((x, y) => Math.abs(x.a) - Math.abs(y.a))) { if (picks.every((p) => p.pos.distanceTo(c.pos) > 2.2)) picks.push(c); if (picks.length >= 3) break; }
+        const fall = [[8, -2.2], [10, 2.0], [12.5, 0.3]];
         for (let i = 0; i < 3; i++) {
           const c = picks[i];
-          const pos = c ? c.p.clone() : place(game, B, fall[i][0], fall[i][1]);
+          const pos = c ? c.pos : place(game, B, fall[i][0], fall[i][1]);
           const yaw = Math.atan2(B.p.x - pos.x, B.p.z - pos.z);
           const s = game.enemies.spawn(pos, { ai: false, yaw, loadout: i });
-          s.shotCrouch = c ? c.low : i === 0;
+          s.shotCrouch = c ? c.low && i !== 1 : i === 0;
           out.push(s);
         }
         return out;
