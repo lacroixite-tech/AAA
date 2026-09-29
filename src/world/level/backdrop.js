@@ -67,8 +67,8 @@ export function buildBackdrop(ctx) {
   for (let i = 0; i < 160; i++) {
     const a = r() * Math.PI * 2, d = 120 + r() * 250; const x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (inside(x, z, 6) || (Math.abs(x) < 16 || Math.abs(z) < 16)) continue;
-    const h = 5 + r() * 7; const g = new THREE.IcosahedronGeometry(1, 1); g.scale(h * 0.35, h * 0.5, h * 0.35);
-    B.add(g, 'backdrop_plain', mat(x, h * 0.55, z, 0, r() * 6, 0), { ...no, tint: r.pick([0x6a6a50, 0x7a6a48, 0x5a5a48]) });
+    const h = 4 + r() * 5; const g = new THREE.IcosahedronGeometry(1, 1); g.scale(h * 0.6, h * 0.32, h * 0.6);
+    B.add(g, 'backdrop_plain', mat(x, h * 0.18, z, 0, r() * 6, 0), { ...no, tint: r.pick([0x6a6a50, 0x7a6a48, 0x5a5a48]) });
   }
   // distant power pylons line
   for (let k = 0; k < 7; k++) {

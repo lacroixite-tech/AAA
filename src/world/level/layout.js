@@ -180,7 +180,7 @@ export function buildLayout(ctx) {
   // facade spill: rubble heaps under shell-damaged walls, and debris strewn onto the road
   for (const [x, z, rx, rz, h, sd] of [[-9, -37, 1.6, 2.6, 0.8, 61], [9.1, 29, 1.4, 2.4, 0.7, 62], [-8.9, 11.5, 1.2, 1.8, 0.6, 63], [9, -20.5, 1.3, 2.2, 0.7, 64], [-9.2, 51, 1.5, 2.5, 0.9, 65], [-3.5, -26, 1.3, 1.2, 0.35, 66], [2.5, 21, 1.0, 1.4, 0.3, 67]]) P.rubble(ctx, x, z, { rx, rz, h, seed: sd, chunks: 22, block: h > 0.5 });
   P.car(ctx, -4.6, -48, HP + 0.25, { kind: 'hatch', burnt: true, seed: 17 });
-  P.wreckedTruck(ctx, -3.5, 31.5, HP + 0.45, { seed: 9 });
+  P.car(ctx, -3.2, 31.5, HP + 0.5, { kind: 'van', burnt: true, seed: 19 });
   // sidewalk trees in pits
   for (const [x, z, s] of [[-8.3, -34, 1], [-8.3, 34, 2], [8.3, 26, 3], [8.3, -48, 4], [-8.3, -50, 5]]) {
     P.tree(ctx, x, z, { seed: 10 + s, h: 7 + s % 3, leaves: 0.4 });
@@ -315,7 +315,9 @@ function monument(ctx, x, z, r) {
   const B = ctx.batch;
   B.add(box(8, 0.4, 8), 'concrete', mat(x, 0.35, z), { surface: 'concrete', tint: 0xb8b4ac });
   B.add(box(6, 0.4, 6), 'concrete', mat(x, 0.75, z), { surface: 'concrete', tint: 0xb8b4ac });
-  B.add(box(2.4, 3.2, 2.4), 'concrete', mat(x, 2.55, z), { surface: 'concrete', tint: 0x9a968e });
+  B.add(box(2.4, 3.2, 2.4), 'concrete', mat(x, 2.55, z), { surface: 'concrete', tint: [1.25, 1.2, 1.12] });
+  for (const [dx, dz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]]) B.add(box(0.3, 3.2, 0.3), 'concrete', mat(x + dx, 2.55, z + dz), { collider: false, tint: [1.35, 1.3, 1.2] });
+  B.add(box(2.5, 3.2, 2.5), 'decal_streak', mat(x, 2.4, z), { collider: false, uv: 'keep' });
   B.add(box(2.7, 0.3, 2.7), 'concrete', mat(x, 4.2, z), { collider: false, tint: 0xa8a49c });
   B.add(box(2.7, 0.3, 2.7), 'concrete', mat(x, 1.05, z), { collider: false, tint: 0xa8a49c });
   // plaque

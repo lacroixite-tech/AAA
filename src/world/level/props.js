@@ -217,7 +217,8 @@ export function hesco(ctx, x, z, yaw, n = 3, { h = 1.4, seed = 2 } = {}) {
     const lx = (i - (n - 1) / 2) * 1.07;
     const g = new THREE.BoxGeometry(1.02, h, 1.02, 2, 3, 2); jitter(g, 0.04, r);
     B.add(g, 'sandbag', F(lx, h / 2, 0, 0, (r() - 0.5) * 0.05), { surface: 'sandbag', tint: 0xc8b898 });
-    B.add(box(1.06, h + 0.02, 1.06), 'wiregrid', F(lx, h / 2 + 0.01, 0), { collider: false, uvScale: 1 / 0.075, shadow: true });
+    B.add(box(1.06, h + 0.02, 1.06), 'wiregrid', F(lx, h / 2 + 0.01, 0), { collider: false, uvScale: 4 });
+    for (const sx of [-0.53, 0.53]) for (const sz of [-0.53, 0.53]) B.add(box(0.04, h + 0.03, 0.04), 'metal_bare', F(lx + sx, h / 2, sz), { collider: false, tint: 0x8a8a80 });
     // dirt fill on top
     const top = cyl(0.5, 0.52, 0.12, 8); jitter(top, 0.06, r);
     B.add(top, 'dirt', F(lx, h + 0.02, 0), { collider: false });

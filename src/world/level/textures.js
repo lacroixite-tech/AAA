@@ -122,7 +122,7 @@ export function chainlinkTex() {
 export function gridTex() {
   return memo('grid', () => {
     const [c, x] = canvas(64, 64);
-    x.strokeStyle = '#fff'; x.lineWidth = 3; x.strokeRect(0, 0, 64, 64);
+    x.strokeStyle = '#fff'; x.lineWidth = 7; x.strokeRect(0, 0, 64, 64);
     return tex(c, { srgb: false, repeat: true, mask: true });
   });
 }
