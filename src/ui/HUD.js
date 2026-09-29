@@ -285,7 +285,7 @@ export class HUD {
   get visible() {
     const g = this.game;
     if (!g.shotName) return true;
-    return this.forceVisible || g.params?.get('hud') === '1';
+    return this.forceVisible || g.params?.get('hud') !== '0';
   }
 
   /* ------------------------------------------------------------------ update */
