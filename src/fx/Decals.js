@@ -17,6 +17,8 @@ export class Decals {
     this.aTile = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3); // col,row,alpha
     this.aTile.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aTile', this.aTile);
+    this.aTint = new THREE.InstancedBufferAttribute(new Float32Array(max * 3).fill(1), 3); this.aTint.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aTint', this.aTint);
     const mat = new THREE.MeshStandardMaterial({
       map: tex.map, normalMap: tex.normalMap, roughnessMap: tex.ormMap, metalnessMap: tex.ormMap,
       roughness: 1, metalness: 1, transparent: true, depthWrite: false,
@@ -24,9 +26,9 @@ export class Decals {
     });
     mat.onBeforeCompile = (s) => {
       s.vertexShader = s.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute vec3 aTile;\nvarying float vDecalA;')
+        .replace('#include <common>', '#include <common>\nattribute vec3 aTile;\nattribute vec3 aTint;\nvarying float vDecalA;\nvarying vec3 vDecalTint;')
         .replace('#include <uv_vertex>', `#include <uv_vertex>
-          vec2 tUv = (aTile.xy + uv) * 0.25; vDecalA = aTile.z;
+          vec2 tUv = (aTile.xy + clamp(uv, 0.01, 0.99)) * 0.25; vDecalA = aTile.z; vDecalTint = aTint;
           #ifdef USE_MAP
           vMapUv = tUv;
           #endif
@@ -40,8 +42,8 @@ export class Decals {
           vMetalnessMapUv = tUv;
           #endif`);
       s.fragmentShader = s.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vDecalA;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.a *= vDecalA;');
+        .replace('#include <common>', '#include <common>\nvarying float vDecalA;\nvarying vec3 vDecalTint;')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.a *= vDecalA; diffuseColor.rgb *= vDecalTint;');
     };
     mat.customProgramCacheKey = () => 'fx-decal';
     this.mesh = new THREE.InstancedMesh(geo, mat, max);
@@ -59,7 +61,7 @@ export class Decals {
   }
 
   /** Place a decal. tile: atlas index 0..15, size in meters. Returns false if it doesn't fit. */
-  add(point, normal, tile, size, { rot = null, check = true, stretch = 1, life = 1e9, offset = 0.002 } = {}) {
+  add(point, normal, tile, size, { rot = null, check = true, stretch = 1, life = 1e9, offset = 0.002, tint = null } = {}) {
     const R = this.fx.rand;
     const angle = rot ?? R() * Math.PI * 2;
     _q.setFromUnitVectors(_z, normal); _q2.setFromAxisAngle(normal, angle); _q.premultiply(_q2);
@@ -78,6 +80,8 @@ export class Decals {
     _m.compose(_p, _q, _s);
     this.mesh.setMatrixAt(i, _m);
     this.aTile.setXYZ(i, tile % 4, Math.floor(tile / 4), 1);
+    if (tint) this.aTint.setXYZ(i, tint[0], tint[1], tint[2]); else this.aTint.setXYZ(i, 1, 1, 1);
+    this.aTint.needsUpdate = true;
     this.ages[i] = 0; this.lifes[i] = life;
     this.mesh.count = this.count;
     this.mesh.instanceMatrix.needsUpdate = true; this.aTile.needsUpdate = true;
