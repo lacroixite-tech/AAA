@@ -70,6 +70,7 @@ const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0)); return t 
 const mix = (a, b, t) => a + (b - a) * t;
 
 // ---------------------------------------------------------------- particle atlas
+const RADIAL = new Set([0, 1, 2, 3, 9, 11, 13]);
 export function buildParticleAtlas(tileSize = 256) {
   const N = makeNoise(9127);
   const S = tileSize, W = S * 4;
@@ -86,7 +87,8 @@ export function buildParticleAtlas(tileSize = 256) {
       const r = Math.hypot(uu, vv), th = Math.atan2(vv, uu);
       const o = fn(uu, vv, r, th);
       const edge = smooth(1.0, 0.94, Math.max(Math.abs(uu), Math.abs(vv))); // hard guarantee: zero at tile border
-      const k = py * S + px; A[k] = clamp(o[0]) * edge; B[k] = clamp(o[1]); H[k] = o[2] !== undefined ? o[2] : A[k];
+      const radial = RADIAL.has(index) ? smooth(1.0, 0.7, r) : 1;
+      const k = py * S + px; A[k] = clamp(o[0]) * edge * radial; B[k] = clamp(o[1]); H[k] = o[2] !== undefined ? o[2] : A[k];
     }
     for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
       const k = py * S + px;
@@ -288,43 +290,41 @@ export function buildDecalAtlas(tileSize = 256) {
     return m;
   };
 
-  // concrete bullet holes
-  const concreteHole = (seed, base, tint) => {
-    const cs = cracks(seed, 5, 0.85);
+  // mineral bullet holes (neutral grey, tinted per-surface at runtime): dark faceted spall crater, black bore,
+  // thin broken ring of pulverised light dust, dark powder/soot halo, hairline cracks, scattered chips.
+  const concreteHole = (seed) => {
+    const cs = cracks(seed, 4 + (seed % 3), 0.9);
     return (u, v, r, th) => {
       const jag = N.fbm(Math.cos(th) * 2.5 + seed, Math.sin(th) * 2.5, 4);
-      const rh = 0.09 + jag * 0.03, rc = 0.44 + jag * 0.22, rs = 0.9 + jag * 0.08;
-      const chip = N.fbm(u * 14 + seed, v * 14, 4);
-      const grain = N.noise(u * 70, v * 70);
-      let h = 0, c, a;
-      const crater = smooth(rc, rc - 0.04, r);
-      const hole = smooth(rh + 0.02, rh - 0.02, r);
-      const depth = Math.pow(clamp(1 - r / rc), 0.8);
-      h = -crater * (depth * 0.55 + chip * 0.25) - hole * 0.6;
-      const fresh = [base[0] + chip * 0.15 + grain * 0.06, base[1] + chip * 0.15 + grain * 0.06, base[2] + chip * 0.14 + grain * 0.06];
-      const inner = mix(1.12, 0.5, depth * depth); // fresh bright chips at the rim, darker deeper (AO)
-      c = [fresh[0] * inner, fresh[1] * inner, fresh[2] * inner];
-      c = c.map((x) => mix(x, 0.035, hole));
-      const soot = (1 - smooth(rc, rs, r)) * (1 - crater) * clamp(0.55 + N.fbm(u * 5 + seed, v * 5, 4) * 1.3);
-      const ck = crackMask(cs, r, th, rc * 0.8) * (1 - crater);
-      a = Math.max(crater, soot * 0.7, ck * 0.85);
-      if (crater < 1) {
-        const sc = [tint[0] * 0.5, tint[1] * 0.5, tint[2] * 0.5];
-        const cc = crater > 0 ? c : sc;
-        c = ck > soot * 0.7 ? [0.08, 0.08, 0.08] : cc;
-        if (crater > 0) c = c.map((x, i) => mix(ck > 0.3 ? 0.08 : sc[i], x, crater));
-        h += -ck * 0.2;
-      }
-      // scattered chips outside crater
-      const spk = smooth(0.35, 0.5, N.noise(u * 40 + seed, v * 40)) * (1 - smooth(rc, rc + 0.3, r)) * (1 - crater);
-      if (spk > 0.01) { a = Math.max(a, spk * 0.8); c = c.map((x, i) => mix(x, fresh[i] * 0.9, spk)); h -= spk * 0.1; }
-      return { c, a, h, rough: 0.95 };
+      const rh = 0.075 + jag * 0.02, rc = 0.3 + jag * 0.2, rs = 0.78 + jag * 0.12;
+      const rp = rc + 0.05 + N.fbm(th * 3 + seed, 1.7, 2) * 0.05;
+      const cell = N.worley(u * 7 + seed, v * 7 - seed);
+      const facet = N.noise(Math.floor(u * 7 + seed + cell * 3), Math.floor(v * 7 - seed)) + 0.5;
+      const crater = smooth(rc + 0.02, rc - 0.03, r);
+      const hole = smooth(rh + 0.02, rh - 0.015, r);
+      const depth = Math.pow(clamp(1 - r / Math.max(0.05, rc)), 0.7);
+      let h = -crater * (0.3 + depth * 0.5 + cell * 0.3) - hole * 0.8;
+      const grain = N.noise(u * 70 + seed, v * 70);
+      const inside = clamp(0.3 * (0.75 + 0.5 * facet) * (1 - 0.6 * depth) + grain * 0.04);
+      const pul = smooth(rc - 0.05, rc - 0.01, r) * smooth(rp, rp - 0.03, r) * smooth(-0.05, 0.2, N.noise(th * 6 + seed, r * 9));
+      const soot = (1 - smooth(rc, rs, r)) * clamp(0.55 + N.fbm(u * 5 + seed, v * 5, 4) * 1.4);
+      const ck = crackMask(cs, r, th, rc * 0.85) * (1 - crater);
+      const fleck = smooth(0.38, 0.52, N.noise(u * 38 + seed, v * 38)) * (1 - smooth(rc, rc + 0.35, r)) * (1 - crater);
+      const fleckLight = N.noise(u * 19 + 7, v * 19) > 0;
+      let c = 0.09, a = soot * 0.6; // soot halo base
+      if (fleck > 0.05) { c = mix(c, fleckLight ? 0.55 : 0.12, fleck); a = Math.max(a, fleck * 0.9); h -= fleck * 0.08; }
+      if (ck > 0.05) { c = mix(c, 0.05, ck); a = Math.max(a, ck * 0.85); h -= ck * 0.2; }
+      if (pul > 0.02) { c = mix(c, 0.6 + grain * 0.08, pul); a = Math.max(a, pul * 0.9); }
+      if (crater > 0.01) { c = mix(c, inside, crater); a = Math.max(a, crater); }
+      c = mix(c, 0.015, hole);
+      const col = [c * 1.02, c, c * 0.97];
+      return { c: col, a, h, rough: 0.95 };
     };
   };
-  tile(D.CONCRETE0, concreteHole(1, [0.6, 0.58, 0.55], [0.22, 0.21, 0.2]), 5);
-  tile(D.CONCRETE1, concreteHole(2, [0.64, 0.62, 0.58], [0.2, 0.2, 0.19]), 5);
-  tile(D.PLASTER, concreteHole(3, [0.86, 0.84, 0.8], [0.3, 0.29, 0.27]), 5);
-  tile(D.BRICK, concreteHole(4, [0.62, 0.36, 0.27], [0.2, 0.14, 0.12]), 5);
+  tile(D.CONCRETE0, concreteHole(1), 6);
+  tile(D.CONCRETE1, concreteHole(2), 6);
+  tile(D.PLASTER, concreteHole(3), 6);
+  tile(D.BRICK, concreteHole(4), 6);
 
   // metal bullet holes: dark hole, petal rim, bare-metal chipped paint ring, faint soot
   const metalHole = (seed) => (u, v, r, th) => {

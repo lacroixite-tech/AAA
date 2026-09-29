@@ -16,6 +16,10 @@ const vert = /* glsl */`
 attribute vec4 aPos; attribute vec4 aAxis; attribute vec4 aColor;
 attribute vec4 aP1; attribute vec4 aP2; attribute vec4 aP3; attribute vec4 aPlane;
 uniform float uPixelWorld;
+#ifdef VM
+uniform mat4 vmProj;
+#endif
+varying float vViewZ; varying float vSoftD;
 varying vec2 vUv; varying vec4 vColor; varying vec4 vP2; varying float vAdd; varying float vTile;
 varying vec3 vWorld; varying vec3 vR; varying vec3 vU; varying vec3 vF; varying vec4 vPlane; varying float vSoft; varying float vSun;
 void main(){
@@ -53,7 +57,13 @@ void main(){
   // near-camera fade for lit (volumetric) particles so they never clip the lens hard
   if (aP2.x > 0.0) vColor.a *= smoothstep(0.08, 0.08 + max(0.15, w * 0.5), depth);
   vec4 mvPosition = viewMatrix * vec4(world, 1.0);
+#ifdef VM
+  gl_Position = vmProj * mvPosition;
+  { float dw = 0.031 + (-mvPosition.z) * 0.25; gl_Position.z = ((projectionMatrix[2][2] * (-dw) + projectionMatrix[3][2]) / dw) * gl_Position.w; }
+#else
   gl_Position = projectionMatrix * mvPosition;
+#endif
+  vViewZ = -mvPosition.z; vSoftD = max(0.03, min(sx, sy) * 0.4);
   #include <fog_vertex>
 }`;
 
@@ -61,6 +71,8 @@ const frag = /* glsl */`
 #include <common>
 #include <fog_pars_fragment>
 uniform sampler2D uAtlas;
+uniform sampler2D uDepth; uniform float uHasDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar;
+varying float vViewZ; varying float vSoftD;
 uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uAmbient; uniform vec3 uGround;
 uniform vec3 uFlashPos; uniform vec3 uFlashColor; uniform vec3 uFlash2Pos; uniform vec3 uFlash2Color;
 varying vec2 vUv; varying vec4 vColor; varying vec4 vP2; varying float vAdd; varying float vTile;
@@ -111,6 +123,12 @@ void main(){
     float sd = dot(vWorld, vPlane.xyz) + vPlane.w;
     alpha *= smoothstep(0.0, vSoft, sd);
   }
+  // depth-buffer soft particles (scene depth blitted just before the particle draw)
+  if (uHasDepth > 0.5) {
+    float dz = texture2D(uDepth, gl_FragCoord.xy / uRes).x;
+    float sceneDist = (uNear * uFar) / (uFar - (uFar - uNear) * dz);
+    alpha *= clamp((sceneDist - vViewZ) / vSoftD, 0.0, 1.0);
+  }
   #ifdef USE_FOG
   {
     float ff; vec3 fcol = fogColor;
@@ -146,7 +164,8 @@ class Particle {
 }
 
 export class Particles {
-  constructor(fx, atlas) {
+  constructor(fx, atlas, opts = {}) {
+    this.vm = !!opts.vm;
     this.fx = fx; this.game = fx.game;
     this.pool = []; for (let i = 0; i < MAX; i++) this.pool.push(new Particle());
     this.free = [...this.pool].reverse();
@@ -167,18 +186,52 @@ export class Particles {
       uAmbient: { value: new THREE.Color(0.35, 0.42, 0.55) }, uGround: { value: new THREE.Color(0.18, 0.15, 0.12) },
       uFlashPos: { value: new THREE.Vector3() }, uFlashColor: { value: new THREE.Color(0, 0, 0) },
       uFlash2Pos: { value: new THREE.Vector3() }, uFlash2Color: { value: new THREE.Color(0, 0, 0) },
+      uDepth: { value: null }, uHasDepth: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uNear: { value: 0.03 }, uFar: { value: 1500 },
+      vmProj: { value: new THREE.Matrix4() },
     }]);
+    if (opts.vmProj) this.uniforms.vmProj = opts.vmProj; // share the weapons' live uniform object
     this.uniforms.uAtlas.value = atlas;
     const m = new THREE.ShaderMaterial({
-      vertexShader: vert, fragmentShader: frag, uniforms: this.uniforms, fog: true,
+      vertexShader: vert, fragmentShader: frag, uniforms: this.uniforms, fog: true, defines: this.vm ? { VM: 1 } : {},
       transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor, premultipliedAlpha: true,
     });
     this.mesh = new THREE.Mesh(g, m);
-    this.mesh.frustumCulled = false; this.mesh.renderOrder = 50;
+    this.mesh.frustumCulled = false; this.mesh.renderOrder = this.vm ? 60 : 50;
     this.fx.root.add(this.mesh);
+    if (!this.vm) this.mesh.onBeforeRender = (renderer, scene, camera) => this._grabDepth(renderer, camera);
     this._sort = []; this._tmp = new THREE.Vector3(); this._fwd = new THREE.Vector3();
+  }
+
+  /**
+   * Copy the scene depth (opaque pass is complete when transparents draw) into our own depth texture via
+   * blitFramebuffer, so particles can fade against real geometry without a depth pre-pass.
+   */
+  _grabDepth(renderer, camera) {
+    const U = this.uniforms; U.uHasDepth.value = 0;
+    const rt = renderer.getRenderTarget(); const post = this.game.post;
+    if (!rt || !rt.depthTexture || (post?.sceneRT && rt !== post.sceneRT) || this._depthFailed) return;
+    try {
+      const gl = renderer.getContext(); if (!gl.blitFramebuffer) return;
+      const w = rt.width, h = rt.height;
+      if (!this._depthRT || this._depthRT.width !== w || this._depthRT.height !== h) {
+        this._depthRT?.dispose();
+        const dt = new THREE.DepthTexture(w, h); dt.type = rt.depthTexture.type; dt.format = rt.depthTexture.format;
+        this._depthRT = new THREE.WebGLRenderTarget(w, h, { depthTexture: dt, depthBuffer: true, samples: 0, type: THREE.UnsignedByteType });
+        renderer.initRenderTarget ? renderer.initRenderTarget(this._depthRT) : null;
+      }
+      const P = renderer.properties;
+      const src = P.get(rt).__webglMultisampledFramebuffer || P.get(rt).__webglFramebuffer;
+      const dst = P.get(this._depthRT).__webglFramebuffer;
+      if (!src || !dst) return;
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dst);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, src);
+      if (!this._depthChecked && (this._depthChecked = true) && gl.getError() !== gl.NO_ERROR) { this._depthFailed = true; console.warn('fx: depth blit failed, soft particles use plane fade'); return; }
+      U.uDepth.value = this._depthRT.depthTexture; U.uHasDepth.value = 1; U.uRes.value.set(w, h);
+      U.uNear.value = camera.near; U.uFar.value = camera.far;
+    } catch (e) { this._depthFailed = true; console.warn('fx: depth blit error', e.message); }
   }
 
   /** Spawn a particle. See fields below for options (all optional). */
@@ -262,6 +315,7 @@ export class Particles {
     this.mesh.geometry.instanceCount = k;
     // pixel size in world units at depth 1
     const h = this.game.renderer.domElement.height || 720;
-    this.uniforms.uPixelWorld.value = 2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) / (h / (this.game.renderer.getPixelRatio?.() || 1));
+    const fov = this.vm ? (this.game.weapons?.vmFov || cam.fov) : cam.fov;
+    this.uniforms.uPixelWorld.value = 2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2) / (h / (this.game.renderer.getPixelRatio?.() || 1));
   }
 }
