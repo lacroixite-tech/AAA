@@ -7,6 +7,17 @@ import * as THREE from 'three';
  */
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
+/** Box with UVs in world metres (materials are authored at 1 UV = 1 m). */
+function meterBox(w, h, d) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ax = Math.abs(nor.getX(i)), ay = Math.abs(nor.getY(i));
+    if (ax > 0.5) uv.setXY(i, z, y); else if (ay > 0.5) uv.setXY(i, x, z); else uv.setXY(i, x, y);
+  }
+  return g;
+}
+
 function bay(game) {
   if (game._fxBay) return game._fxBay;
   const sp = game.level.playerSpawn;
@@ -27,10 +38,10 @@ function bay(game) {
   const M = game.materials;
   const mat = (n, fb) => { try { return M.get(n) || M.get(fb); } catch { return M.get(fb); } };
   const wallPos = base.clone().addScaledVector(fwd, 4.2).add(V(0, 1.7, 0));
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(7, 3.4, 0.4), mat('concrete', 'concrete'));
+  const wall = new THREE.Mesh(meterBox(7, 3.4, 0.4), mat('concrete', 'concrete'));
   wall.position.copy(wallPos); wall.rotation.y = yaw; wall.castShadow = wall.receiveShadow = true;
   wall.userData.collider = true; wall.userData.surface = 'concrete';
-  const panel = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.3, 0.06), mat('metal_painted', 'metal'));
+  const panel = new THREE.Mesh(meterBox(2.2, 2.3, 0.06), mat('metal_bare', 'metal'));
   panel.position.copy(base).addScaledVector(fwd, 3.95).addScaledVector(right, 2.1).add(V(0, 1.2, 0)); panel.rotation.y = yaw;
   panel.castShadow = panel.receiveShadow = true; panel.userData.collider = true; panel.userData.surface = 'metal';
   game.scene.add(wall, panel);

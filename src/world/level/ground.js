@@ -68,7 +68,7 @@ export function buildGround(ctx) {
   }
   // tram tracks along main street (two tracks)
   for (const tc of [-2.4, 2.4]) for (const off of [-0.76, 0.76]) {
-    B.add(box(0.07, 0.06, EXT * 2), 'metal_bare', mat(tc + off, 0.03, 0), { collider: false, tint: 0x9a948c });
+    B.add(box(0.07, 0.04, EXT * 2), 'metal_rusty', mat(tc + off, 0.018, 0), { collider: false, tint: 0x8a8480 });
     B.add(box(0.2, 0.012, EXT * 2), 'concrete_dark', mat(tc + off, 0.022, 0), { collider: false, tint: 0x6a6660 });
   }
   // manholes & drains

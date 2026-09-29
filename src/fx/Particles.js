@@ -100,12 +100,12 @@ void main(){
     vec2 nxy = t.rg * 2.0 - 1.0;
     vec3 n = normalize(vR * nxy.x + vU * nxy.y + vF * sqrt(max(0.0, 1.0 - dot(nxy, nxy))));
     float ndl = dot(n, uSunDir);
-    float wrap = max(0.0, (ndl + 0.5) / 1.5);
+    float wrap = max(0.0, (ndl + 0.25) / 1.25);
     float thick = t.b;
     vec3 V = normalize(vWorld - cameraPosition);
     float mu = dot(V, uSunDir);
     vec3 amb = mix(uGround, uAmbient, n.y * 0.5 + 0.5);
-    vec3 L = amb * (0.55 + 0.45 * thick) + uSunColor * vSun * wrap * (0.4 + 0.6 * thick) * RECIPROCAL_PI;
+    vec3 L = amb * (0.4 + 0.5 * thick) + uSunColor * vSun * wrap * (0.4 + 0.6 * thick) * RECIPROCAL_PI;
     L += uSunColor * vSun * hg(mu, 0.55) * (1.0 - a * 0.7) * 0.5; // backlit forward scatter (golden-hour glow through smoke)
     vec3 d1 = uFlashPos - vWorld; float q1 = dot(d1, d1);
     L += uFlashColor * (0.35 + 0.65 * max(0.0, dot(n, d1 * inversesqrt(q1 + 1e-4)))) / (q1 + 0.4);
@@ -114,7 +114,7 @@ void main(){
     col += vColor.rgb * L * lit;
   }
   if (heat > 0.0) {
-    float T = t.b * heat * (0.35 + 0.65 * smoothstep(0.0, 0.6, t.a));
+    float T = t.b * heat * smoothstep(0.08, 0.85, t.a);
     vec3 fire = fireRamp(T) * emis;
     col = mix(col, vec3(0.0), smoothstep(0.15, 0.55, T)) + fire;
   }
@@ -167,7 +167,7 @@ export class Particles {
   constructor(fx, atlas, opts = {}) {
     this.vm = !!opts.vm;
     this.fx = fx; this.game = fx.game;
-    this.pool = []; for (let i = 0; i < MAX; i++) this.pool.push(new Particle());
+    this.pool = []; const max = opts.max || MAX; for (let i = 0; i < max; i++) this.pool.push(new Particle());
     this.free = [...this.pool].reverse();
     this.live = [];
     const g = new THREE.InstancedBufferGeometry();
@@ -176,7 +176,7 @@ export class Particles {
     g.setIndex([0, 1, 2, 0, 2, 3]);
     this.attrs = {};
     for (const n of ['aPos', 'aAxis', 'aColor', 'aP1', 'aP2', 'aP3', 'aPlane']) {
-      const a = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 4), 4); a.setUsage(THREE.DynamicDrawUsage);
+      const a = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4); a.setUsage(THREE.DynamicDrawUsage);
       g.setAttribute(n, a); this.attrs[n] = a;
     }
     g.instanceCount = 0;
@@ -272,6 +272,7 @@ export class Particles {
         if (p.drag) p.vel.multiplyScalar(Math.exp(-p.drag * dt));
         if (p.turb) { p.vel.x += Math.sin(t * 1.7 + p.seed) * p.turb * dt; p.vel.z += Math.cos(t * 1.3 + p.seed * 1.7) * p.turb * dt; }
         p.pos.addScaledVector(p.vel, dt);
+        if (p.lit > 0.5 && !p.tracer) p.pos.addScaledVector(this.fx.wind, dt * Math.min(1, p.age * 2));
         if (p.pos.y < p.floorY) { p.pos.y = p.floorY; if (p.vel.y < 0) p.vel.y *= -p.rest; p.vel.x *= 0.55; p.vel.z *= 0.55; }
         p.rot += p.rotVel * dt;
       }

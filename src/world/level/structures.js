@@ -251,7 +251,6 @@ export function ruinCorner(ctx, { seed = 21 } = {}) {
     const c = box(s0 * (1 + r()), s0 * 0.6, s0 * (1 + r())); jitter(c, s0 * 0.3, r);
     B.add(c, r.pick(['concrete', 'brick', 'plaster', 'concrete_dark']), mat(rx0 + t * dx, 0.1 + t * dy + 0.14 + s0 * 0.2, zz, r(), r() * 6, r()), { collider: false, tint: 0xd8ccb8 });
   }
-  for (let k = 0; k < 3; k++) B.add(new THREE.PlaneGeometry(len * 0.6, 1.6), 'decal_dust', mat(rx0 + dx * (0.2 + k * 0.3), 0.12 + dy * (0.2 + k * 0.3) + 0.17, rz + (r() - 0.5) * 3, -Math.PI / 2, 0, 0).multiply(mat(0, 0, 0, 0, 0, 0)), { collider: false, uv: 'keep' });
   ctx.ramp(len, rw - 0.6, mat((rx0 + rx1) / 2, (0.1 + sy) / 2 - 0.02, rz, 0, 0, ang), true);
   for (let i = 0; i < 12; i++) B.add(cyl(0.008, 0.008, 0.6 + r() * 0.8, 3), 'metal_rusty', mat(rx1 - 0.2, sy - 0.1, rz - rw / 2 + 0.3 + i * 0.38, (r() - 0.5) * 0.8, 0, Math.PI / 2 - 0.3 + (r() - 0.5) * 0.5), { collider: false });
   // remaining ground-floor walls: courtyard side x=24 with doorway, cross-street side z=10 partial

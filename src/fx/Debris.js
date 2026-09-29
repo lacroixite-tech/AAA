@@ -30,19 +30,20 @@ function shardGeometry() {
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.computeVertexNormals(); return g;
 }
 function shellGeometry() {
-  // 5.56 NATO-ish case, meters (slightly oversized for readability like in games); axis = +Y, mouth at top
-  const k = 1.25;
-  const pts = [[0, 0], [0.0047, 0], [0.0048, 0.0008], [0.0041, 0.0014], [0.0041, 0.0028], [0.0048, 0.0034], [0.0047, 0.036],
-    [0.0032, 0.0405], [0.0031, 0.0455], [0.0027, 0.0455], [0.0027, 0.041]].map(([x, y]) => new THREE.Vector2(x * k, (y - 0.0225) * k));
-  const g = new THREE.LatheGeometry(pts, 10); g.computeVertexNormals(); return g;
+  // 5.56x45 case (m), axis +Y, head at bottom: rim, extractor groove, tapered body, shoulder, neck, mouth.
+  const k = 1.15;
+  const pts = [[0, 0.0003], [0.0035, 0], [0.0047, 0.0002], [0.00478, 0.0009], [0.0046, 0.0012], // rim + chamfer
+    [0.0039, 0.0016], [0.0038, 0.0027], [0.0046, 0.0033], [0.0048, 0.0036], // extractor groove -> body
+    [0.00455, 0.0365], [0.0032, 0.0395], [0.00318, 0.0443], [0.00305, 0.0448], [0.0027, 0.0448], [0.0027, 0.041], [0.0005, 0.041]]
+    .map(([x, y]) => new THREE.Vector2(x * k, (y - 0.0224) * k));
+  const g = new THREE.LatheGeometry(pts, 18); g.computeVertexNormals(); return g;
 }
-
 export class Debris {
   constructor(fx) {
     this.fx = fx; this.game = fx.game;
     const chunkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
     const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fb7b8, roughness: 0.04, metalness: 0.6, envMapIntensity: 1.5 });
-    const brassMat = new THREE.MeshStandardMaterial({ color: 0xd9a748, roughness: 0.26, metalness: 1.0, envMapIntensity: 1.3, emissive: 0x2a1a05 });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xb89250, roughness: 0.34, metalness: 1.0, envMapIntensity: 1.0 });
     const splinterGeo = new THREE.BoxGeometry(1, 1, 1);
     this.kinds = {
       chunk: this._make(chunkGeometry(), chunkMat, 320, true),

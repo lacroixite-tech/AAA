@@ -4,6 +4,7 @@ import { Particles } from './Particles.js';
 import { Debris } from './Debris.js';
 import { Decals } from './Decals.js';
 import { mulberry32 } from './rng.js';
+import * as WM from '../weapons/materials.js';
 
 /**
  * Combat VFX. Owner: fx agent.
@@ -18,17 +19,21 @@ export class EffectsSystem {
   constructor(game) {
     this.game = game;
     this.rand = mulberry32(20190);
-    this.time = 0; this.frozen = false; this.shots = 0; this.sunVis = 1;
+    this.wind = new THREE.Vector3(0.7, 0.05, 0.3); this.time = 0; this.frozen = false; this.shots = 0; this.sunVis = 1;
     this.q = game.quality === 'low' ? 0.5 : 1;
     this.root = new THREE.Group(); this.root.name = 'fx'; game.scene.add(this.root);
 
-    this.particles = new Particles(this, buildParticleAtlas(game.quality === 'low' ? 128 : 256));
+    const atlas = buildParticleAtlas(game.quality === 'low' ? 128 : 256);
+    this.particles = new Particles(this, atlas);
+    // viewmodel-space particles: drawn with the weapon's own projection + squashed depth so the flash sits
+    // exactly on the bore and in front of the gun geometry (never hidden behind the flash hider)
+    this.vmParticles = new Particles(this, atlas, { vm: true, max: 256, vmProj: WM.VM?.proj });
     this.debris = new Debris(this);
     this.decals = new Decals(this, buildDecalAtlas(256), 256);
 
     // dynamic lights (always present so shader light counts never change)
-    this.lightA = new THREE.PointLight(0xffa860, 0, 10, 2); this.lightA.name = 'fx-muzzle-light';
-    this.lightB = new THREE.PointLight(0xff9a50, 0, 60, 2); this.lightB.name = 'fx-world-light';
+    this.lightA = new THREE.PointLight(0xffa050, 0, 14, 2); this.lightA.name = 'fx-muzzle-light';
+    this.lightB = new THREE.PointLight(0xff9a50, 0, 30, 2); this.lightB.name = 'fx-world-light';
     this.root.add(this.lightA, this.lightB);
     this.lightAPeak = 0; this.lightAT = 1; this.lightADur = 0.05;
     this.lightBPeak = 0; this.lightBT = 1; this.lightBDur = 0.1; this.lightBPri = 0;
@@ -81,28 +86,42 @@ export class EffectsSystem {
   }
 
   // ------------------------------------------------------------------ muzzle
-  _muzzlePos(e, out) {
-    const mo = this.game.weapons?.muzzleObject;
-    if (mo) { mo.updateWorldMatrix(true, false); return mo.getWorldPosition(out); }
-    if (e.muzzleWorld) return out.copy(e.muzzleWorld);
-    const cam = this.game.camera;
-    return out.set(0.12, -0.1, -0.7).applyMatrix4(cam.matrixWorld);
+  /**
+   * Muzzle anchors. weapons.muzzleObject is placed where the muzzle *appears* in the main camera projection
+   * (screen-matched, used for world FX: smoke, tracer). The viewmodel itself is drawn with its own FOV, so the
+   * true viewmodel-space muzzle is recovered by undoing the FOV ratio k (used for vm flash + gun lighting).
+   */
+  _anchors(e) {
+    const W = this.game.weapons; const cam = this.game.camera;
+    const screen = new THREE.Vector3(); const vm = new THREE.Vector3();
+    const mo = W?.muzzleObject;
+    if (mo) {
+      mo.updateWorldMatrix(true, false); mo.getWorldPosition(screen);
+      const k = W.vmFov ? Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(W.vmFov) / 2) : 1;
+      const l = mo.position; vm.set(l.x / k, l.y / k, l.z).applyMatrix4(cam.matrixWorld);
+      return { screen, vm, hasVm: !!WM.VM?.proj && mo.parent === cam };
+    }
+    if (e.muzzleWorld) screen.copy(e.muzzleWorld); else screen.set(0.12, -0.1, -0.7).applyMatrix4(cam.matrixWorld);
+    return { screen, vm: screen.clone(), hasVm: false };
   }
 
   _onWeaponFire(e) {
     const dir = (e.dir || this.game.camera.getWorldDirection(new THREE.Vector3())).clone().normalize();
     const origin = e.origin || this.game.camera.getWorldPosition(new THREE.Vector3());
-    const muzzle = this._muzzlePos(e, new THREE.Vector3());
+    const A = this._anchors(e);
     const w = e.weapon || this.game.weapons?.current || {};
     const name = String(w.name || w.id || '').toLowerCase();
-    const scale = w.flashScale ?? (/shotgun/.test(name) ? 1.4 : /smg|mp5|mp7/.test(name) ? 0.8 : /pistol|m9|glock|1911/.test(name) ? 0.7 : 1);
-    this.muzzleFlash(muzzle, dir, { fp: true, scale: scale * 1.25, suppressed: !!w.suppressed });
+    const scale = w.flashScale ?? (/shotgun/.test(name) ? 1.4 : /smg|mp5|mp7/.test(name) ? 0.8 : /pistol|m9|glock|1911|m18/.test(name) ? 0.7 : 1);
+    const suppressed = !!(w.suppressed || w.suppressor || e.suppressed);
+    this.muzzleFlash(A.screen, dir, { fp: true, scale, suppressed, vmPos: A.hasVm ? A.vm : null, ads: e.ads || 0 });
     this.shots++;
     const every = w.tracerEvery ?? 3;
     if (every > 0 && this.shots % every === 0) {
       const h = this.game.collision?.raycast(origin, dir, 600, { dynamic: true });
       const end = h ? h.point.clone() : origin.clone().addScaledVector(dir, 600);
-      this.tracer(muzzle.clone().addScaledVector(dir, 0.4), end, {});
+      // start ~1.5 m downrange of the (screen-matched) muzzle, heading to the impact point
+      const td = end.clone().sub(A.screen).normalize();
+      this.tracer(A.screen.clone().addScaledVector(td, 1.5), end, {});
     }
     if (w.shells !== false) this.ejectShell(null, dir);
   }
@@ -110,72 +129,70 @@ export class EffectsSystem {
   _onEnemyFire(e) {
     if (!e?.origin || !e?.dir) return;
     const dir = e.dir.clone().normalize();
-    this.muzzleFlash(e.origin, dir, { fp: false, scale: 1.3 });
+    this.muzzleFlash(e.origin, dir, { fp: false, scale: 1.2 });
     const h = this.game.collision?.raycast(e.origin, dir, 400, { dynamic: false, ignore: e.enemy });
     const end = h ? h.point.clone() : e.origin.clone().addScaledVector(dir, 400);
-    this.tracer(e.origin.clone().addScaledVector(dir, 0.5), end, { color: [14, 6, 1.8] });
+    this.tracer(e.origin.clone().addScaledVector(dir, 0.8), end, { color: [14, 6, 1.8] });
     if (h && !e.noImpact && h.distance > 1) this.spawnImpact(h.point, h.normal, h.surface, dir);
   }
 
-  /** Multi-layer muzzle flash + light + lingering smoke. */
-  muzzleFlash(pos, dir, { fp = true, scale = 1, suppressed = false } = {}) {
-    const ps = this.particles; const s = scale * (suppressed ? 0.4 : 1); const R = () => this.rand();
+  /**
+   * Multi-layer muzzle flash + light + lingering smoke. `vmPos` (first person) draws the flash cards in
+   * viewmodel space at the true bore so they register with the gun; smoke/sparks go to world space at `pos`.
+   */
+  muzzleFlash(pos, dir, { fp = true, scale = 1, suppressed = false, vmPos = null, ads = 0 } = {}) {
+    const R = () => this.rand();
+    const ps = vmPos ? this.vmParticles : this.particles;
+    const P0 = (vmPos || pos).clone();
+    const s = scale * (suppressed ? 0.35 : 1) * (fp ? 1 : 1.25);
     const side = dir.clone().cross(UP); if (side.lengthSq() < 1e-4) side.set(1, 0, 0); side.normalize();
     const up2 = side.clone().cross(dir).normalize();
-    const hot = suppressed ? 0.35 : 1;
-    const P0 = pos.clone();
-    this.sunVis = this.sunVisibility(P0);
-    // hot core
-    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.02 * s), size: 0.075 * s, size1: 0.09 * s, tile: P.CORE, color: [6 * hot, 3.4 * hot, 1.3 * hot], life: 0.05, additive: 1, fadeIn: 0, fadeOut: 0.7, rot: R() * 6.28 });
-    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.04 * s), size: 0.26 * s, tile: P.GLOW, color: [1.1 * hot, 0.5 * hot, 0.16 * hot], life: 0.05, additive: 1, fadeIn: 0, fadeOut: 0.8 });
-    // front star (perpendicular to barrel) + camera-facing star so it reads in first person
-    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.05 * s), mode: 2, axis: dir, size: this.r(0.26, 0.36) * s, tile: P.STAR, color: [3.2 * hot, 1.3 * hot, 0.32 * hot], life: 0.05, additive: 1, fadeIn: 0, fadeOut: 0.6, rot: R() * 6.28 });
-    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.07 * s), size: this.r(0.22, 0.3) * s * (fp ? 1 : 1.3), tile: P.STAR, color: [2.6 * hot, 1.05 * hot, 0.26 * hot], life: 0.05, additive: 1, fadeIn: 0, fadeOut: 0.6, rot: R() * 6.28 });
+    const hot = suppressed ? 0.3 : 1;
+    this.sunVis = this.sunVisibility(pos);
+    const L = 0.05; // ~3 frames at 60 fps, strongest on the first
+    // white-hot core right at the crown
+    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.012 * s), size: 0.05 * s, size1: 0.06 * s, tile: P.CORE, color: [9 * hot, 6 * hot, 3 * hot], life: L, additive: 1, fadeIn: 0, fadeOut: 0.8, alphaPow: 2, rot: R() * 6.28 });
+    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.03 * s), size: 0.2 * s, tile: P.GLOW, color: [0.9 * hot, 0.42 * hot, 0.12 * hot], life: L, additive: 1, fadeIn: 0, fadeOut: 0.8 });
+    // flash-hider star: card across the bore + small camera-facing star
+    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.035 * s), mode: 2, axis: dir, size: this.r(0.2, 0.27) * s, tile: P.STAR, color: [3.4 * hot, 1.4 * hot, 0.33 * hot], life: L, additive: 1, fadeIn: 0, fadeOut: 0.7, alphaPow: 2, rot: R() * 6.28 });
+    ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.05 * s), size: this.r(0.12, 0.17) * s, tile: P.STAR, color: [2.6 * hot, 1.1 * hot, 0.26 * hot], life: L, additive: 1, fadeIn: 0, fadeOut: 0.7, alphaPow: 2, rot: R() * 6.28 });
     if (!suppressed) {
-      // flame petals: forward tongues + radial petals (read as a burst from behind the gun)
-      const n = 3 + Math.floor(R() * 2);
+      // forward flame tongues along the bore
+      const n = 2 + Math.floor(R() * 2);
       for (let i = 0; i < n; i++) {
-        const ax = this.cone(dir, 0.15, new THREE.Vector3());
-        ps.spawn({ pos: P0.clone(), mode: 1, axis: ax, anchor: 1, len: this.r(0.22, 0.45) * s * (fp ? 1 : 1.4), size: this.r(0.08, 0.12) * s, tile: P.FLAME, color: [3.6, 1.35, 0.3], life: 0.05, additive: 1, fadeIn: 0, fadeOut: 0.6 });
+        const ax = this.cone(dir, 0.12, new THREE.Vector3());
+        ps.spawn({ pos: P0.clone(), mode: 1, axis: ax, anchor: 1, len: this.r(0.16, 0.3) * s, size: this.r(0.06, 0.09) * s, tile: P.FLAME, color: [3.4, 1.3, 0.28], life: L, additive: 1, fadeIn: 0, fadeOut: 0.7 });
       }
+      // birdcage slot jets: 4-6 short radial petals
       const np = 4 + Math.floor(R() * 3); const a0 = R() * 6.28;
       for (let i = 0; i < np; i++) {
-        const a = a0 + (i / np) * 6.28 + this.r(-0.3, 0.3);
-        const ax = dir.clone().multiplyScalar(this.r(0.5, 1.1)).addScaledVector(side, Math.cos(a)).addScaledVector(up2, Math.sin(a)).normalize();
-        ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.03 * s), mode: 1, axis: ax, anchor: 1, len: this.r(0.1, 0.2) * s, size: this.r(0.05, 0.08) * s, tile: P.FLAME, color: [3.2, 1.2, 0.28], life: 0.05, additive: 1, fadeIn: 0, fadeOut: 0.6 });
+        const a = a0 + (i / np) * 6.28 + this.r(-0.25, 0.25);
+        const ax = dir.clone().multiplyScalar(this.r(0.6, 1.2)).addScaledVector(side, Math.cos(a)).addScaledVector(up2, Math.sin(a)).normalize();
+        ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.02 * s), mode: 1, axis: ax, anchor: 1, len: this.r(0.07, 0.14) * s, size: this.r(0.035, 0.055) * s, tile: P.FLAME, color: [3.0, 1.1, 0.24], life: L * 0.8, additive: 1, fadeIn: 0, fadeOut: 0.7 });
       }
-      // muzzle-brake side vents
-      for (const sg of [-1, 1]) {
-        const ax = side.clone().multiplyScalar(sg).addScaledVector(dir, 0.35).addScaledVector(up2, this.r(-0.15, 0.15)).normalize();
-        ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.015), mode: 1, axis: ax, anchor: 1, len: this.r(0.1, 0.17) * s, size: 0.06 * s, tile: P.FLAME, color: [3.4, 1.3, 0.3], life: 0.045, additive: 1, fadeIn: 0, fadeOut: 0.6 });
-      }
-      const up3 = up2.clone().addScaledVector(dir, 0.4).normalize();
-      ps.spawn({ pos: P0.clone().addScaledVector(dir, 0.015), mode: 1, axis: up3, anchor: 1, len: this.r(0.06, 0.1) * s, size: 0.045 * s, tile: P.FLAME, color: [3, 1.15, 0.26], life: 0.045, additive: 1, fadeIn: 0 });
-      // burning powder sparks
-      for (let i = 0; i < 6 * this.q; i++) {
-        const v = this.cone(dir, 0.35, new THREE.Vector3()).multiplyScalar(this.r(10, 30));
-        ps.spawn({ pos: P0.clone(), vel: v, mode: 1, stretch: 0.012, size: 0.004, minPx: 1, tile: P.SPARK, color: [7, 3.2, 1], color1: [2, 0.4, 0.05], life: this.r(0.05, 0.14), additive: 1, anchor: -1, drag: 4, fadeIn: 0, fadeOut: 0.5 });
+      // burning powder sparks (world space so they fly off into the scene)
+      for (let i = 0; i < 5 * this.q; i++) {
+        const v = this.cone(dir, 0.3, new THREE.Vector3()).multiplyScalar(this.r(12, 30));
+        this.particles.spawn({ pos: pos.clone().addScaledVector(dir, 0.1), vel: v, mode: 1, stretch: 0.01, size: 0.004, minPx: 1, tile: P.SPARK, color: [6, 2.6, 0.7], color1: [2, 0.35, 0.04], life: this.r(0.04, 0.12), additive: 1, anchor: -1, drag: 4, fadeIn: 0, fadeOut: 0.5 });
       }
     }
-    // lingering smoke wisps
+    // lingering smoke wisps (world space, from the screen-matched muzzle)
     for (let i = 0; i < 2; i++) {
-      const v = dir.clone().multiplyScalar(this.r(0.5, 1.4)).addScaledVector(UP, this.r(0.15, 0.35)).addScaledVector(this.unit(_c), 0.15);
-      ps.spawn({ pos: P0.clone().addScaledVector(dir, this.r(0.02, 0.12)), vel: v, size: 0.05 * s, size1: this.r(0.28, 0.5) * s, sizePow: 1.6, tile: i ? P.SMOKE2 : P.SMOKE0,
-        color: [0.5, 0.49, 0.48], alpha: fp ? 0.11 : 0.22, life: this.r(0.9, 1.7), lit: 1, drag: 1.6, buoy: 0.25, turb: 0.5, rot: R() * 6.28, rotVel: this.r(-1, 1),
+      const v = dir.clone().multiplyScalar(this.r(0.4, 1.1)).addScaledVector(UP, this.r(0.15, 0.3)).addScaledVector(this.unit(_c), 0.12);
+      this.particles.spawn({ pos: pos.clone().addScaledVector(dir, this.r(0.04, 0.14)), vel: v, size: 0.05, size1: this.r(0.25, 0.42) * (fp ? 1 : 1.5), sizePow: 1.6, tile: i ? P.SMOKE2 : P.SMOKE0,
+        color: [0.46, 0.45, 0.44], alpha: fp ? 0.1 : 0.2, life: this.r(0.8, 1.4), lit: 1, drag: 1.6, buoy: 0.25, turb: 0.5, rot: R() * 6.28, rotVel: this.r(-1, 1),
         fadeIn: 0.04, fadeOut: 0.75, erode: 0.0, erode1: 0.45 });
     }
-    // light
-    const lp = P0.clone().addScaledVector(dir, 0.18);
-    if (fp) { this.lightA.position.copy(lp); this.lightAPeak = (suppressed ? 1.2 : 6) * scale; this.lightAT = 0; this.lightADur = 0.06; }
-    else this._worldLight(lp, 20 * scale, 0.06, 1);
+    // light: sits just ahead of the true bore so it rakes the handguard, hands and the ground in front
+    if (fp) {
+      const lp = P0.clone().addScaledVector(dir, 0.08).addScaledVector(UP, 0.02);
+      this.lightA.position.copy(lp); this.lightAPeak = (suppressed ? 6 : 38) * scale; this.lightAT = 0; this.lightADur = 0.05;
+    } else this._worldLight(pos.clone().addScaledVector(dir, 0.2), 25 * scale, 0.06, 1);
     this.sunVis = 1;
   }
 
   _worldLight(pos, peak, dur, pri) {
-    if (this.lightBT < this.lightBDur && pri < this.lightBPri) {
-      // don't steal from a stronger active light (explosions win); still allow if much closer to camera
-      return;
-    }
+    if (this.lightBT < this.lightBDur && pri < this.lightBPri) return; // explosions win over enemy muzzle flashes
     this.lightB.position.copy(pos); this.lightBPeak = peak; this.lightBT = 0; this.lightBDur = dur; this.lightBPri = pri;
   }
 
@@ -189,22 +206,25 @@ export class EffectsSystem {
       const W = this.game.weapons;
       const eo = W?.ejectObject || W?.ejectionPort;
       if (eo) { eo.updateWorldMatrix(true, false); pos = eo.getWorldPosition(new THREE.Vector3()); }
-      else pos = new THREE.Vector3(0.1, -0.09, -0.32).applyMatrix4(cam.matrixWorld);
+      else pos = new THREE.Vector3(0.08, -0.07, -0.3).applyMatrix4(cam.matrixWorld);
     }
-    const vel = right.clone().multiplyScalar(this.r(2.0, 3.0)).addScaledVector(up, this.r(1.2, 2.0)).addScaledVector(dir, this.r(-0.5, 0.2));
+    // 5.56 ejects right, slightly up and forward of the shooter
+    const vel = right.clone().multiplyScalar(this.r(1.3, 2.0)).addScaledVector(up, this.r(0.9, 1.5)).addScaledVector(dir, this.r(-0.1, 0.35));
     if (this.game.player?.velocity) vel.add(this.game.player.velocity);
     const q = new THREE.Quaternion().setFromUnitVectors(UP, dir);
-    const w = up.clone().multiplyScalar(this.r(18, 30) * this.sign()).addScaledVector(dir, this.r(-6, 6));
+    const w = up.clone().multiplyScalar(this.r(14, 24) * this.sign()).addScaledVector(dir, this.r(-5, 5));
     this.debris.spawn({ kind: 'shell', pos, vel, q, w, scale: 1, radius: 0.005, color: [1, 1, 1], life: 12, rest: 0.45, friction: 0.7, drag: 0.1, event: 'fx:shell_land' });
+    // faint port smoke
+    this.particles.spawn({ pos: pos.clone(), vel: right.clone().multiplyScalar(0.3).addScaledVector(UP, 0.2), size: 0.02, size1: 0.12, tile: P.SMOKE2, color: [0.5, 0.49, 0.48], alpha: 0.12, life: 0.6, lit: 1, drag: 2, buoy: 0.2, rot: this.r(0, 6.28), fadeIn: 0.05, fadeOut: 0.8, erode1: 0.5 });
   }
 
   /** Bright tracer streak travelling from `from` to `to`. */
-  tracer(from, to, { speed = 380, len = 5.5, width = 0.022, color = [14, 5.5, 1.6] } = {}) {
+  tracer(from, to, { speed = 420, len = 6, width = 0.02, color = [14, 5.5, 1.6] } = {}) {
     const dir = to.clone().sub(from); const dist = dir.length(); if (dist < 1) return; dir.divideScalar(dist);
     const life = (dist + len) / speed + 0.02;
-    const head = Math.min(dist, len * 0.7) / speed; // appear already streaking out of the muzzle
+    const head = Math.min(dist, len * 0.6) / speed; // appear already streaking
     const a = this.particles.spawn({ tracer: true, pos: from, dir, dist, speed, len, size: width, minPx: 1.6, tile: P.TRACER, color, life, additive: 1, fadeIn: 0, fadeOut: 0 });
-    const b = this.particles.spawn({ tracer: true, pos: from, dir, dist, speed, len: len * 0.9, size: width * 7, minPx: 5, tile: P.TRACER, color: color.map((c) => c * 0.1), life, additive: 1, fadeIn: 0, fadeOut: 0 });
+    const b = this.particles.spawn({ tracer: true, pos: from, dir, dist, speed, len: len * 0.9, size: width * 6, minPx: 4, tile: P.TRACER, color: color.map((c) => c * 0.08), life, additive: 1, fadeIn: 0, fadeOut: 0 });
     if (a) a.age = head; if (b) b.age = head;
   }
 
@@ -232,10 +252,10 @@ export class EffectsSystem {
       case 'soft': this._impactDirt(ctx, [0.46, 0.4, 0.3], D.CLOTH, true); break;
       case 'glass': this._impactGlass(ctx); break;
       case 'flesh': this._impactFlesh(ctx); break;
-      case 'brick': this._impactMineral(ctx, [0.5, 0.33, 0.26], D.BRICK); break;
-      case 'plaster': this._impactMineral(ctx, [0.72, 0.7, 0.65], D.PLASTER); break;
-      case 'asphalt': this._impactMineral(ctx, [0.36, 0.35, 0.34], this.rand() < 0.5 ? D.CONCRETE0 : D.CONCRETE1, 0.6); break;
-      default: this._impactMineral(ctx, [0.56, 0.54, 0.5], this.rand() < 0.5 ? D.CONCRETE0 : D.CONCRETE1);
+      case 'brick': this._impactMineral(ctx, [0.5, 0.33, 0.26], [1.3, 0.8, 0.64]); break;
+      case 'plaster': this._impactMineral(ctx, [0.72, 0.7, 0.65], [1.35, 1.32, 1.25]); break;
+      case 'asphalt': this._impactMineral(ctx, [0.36, 0.35, 0.34], [0.72, 0.72, 0.72]); break;
+      default: this._impactMineral(ctx, [0.56, 0.54, 0.5], [1.05, 1.02, 0.97]);
     }
     this.sunVis = 1;
     this.game.events.emit('fx:impact', { point: p, normal: n, surface: kind });
@@ -252,13 +272,13 @@ export class EffectsSystem {
     }
   }
 
-  /** fast narrow jet of dust streaks shooting out of the hole */
-  _jet(ctx, col, count = 3) {
-    const { p, n, refl, plane } = ctx; const base = n.clone().lerp(refl, 0.2).normalize();
+  /** fast narrow jet of dust streaks shooting out of the hole, biased along the ricochet (reflected) dir */
+  _jet(ctx, col, count = 4) {
+    const { p, n, refl, plane } = ctx; const base = n.clone().lerp(refl, 0.55).normalize();
     for (let i = 0; i < count * this.q; i++) {
-      const v = this.cone(base, 0.25, new THREE.Vector3()).multiplyScalar(this.r(7, 13));
-      this.particles.spawn({ pos: p.clone().addScaledVector(n, 0.02), vel: v, drag: 9, mode: 1, stretch: 0.045, anchor: -1, size: this.r(0.035, 0.06), size1: this.r(0.14, 0.22),
-        tile: P.SMOKE2, color: col, alpha: this.r(0.6, 0.8), lit: 1, life: this.r(0.25, 0.4), fadeIn: 0, fadeOut: 0.7, erode: 0.05, erode1: 0.6, plane, soft: 0.08 });
+      const v = this.cone(base, 0.22, new THREE.Vector3()).multiplyScalar(this.r(8, 15));
+      this.particles.spawn({ pos: p.clone().addScaledVector(n, 0.02), vel: v, drag: 10, mode: 1, stretch: 0.05, anchor: -1, size: this.r(0.03, 0.05), size1: this.r(0.12, 0.2),
+        tile: P.SMOKE2, color: col, alpha: this.r(0.45, 0.6), lit: 1, life: this.r(0.18, 0.32), fadeIn: 0, fadeOut: 0.75, erode: 0.05, erode1: 0.65, plane, soft: 0.06 });
     }
   }
 
@@ -282,36 +302,36 @@ export class EffectsSystem {
     }
   }
 
-  _impactMineral(ctx, col, decal, dark = 1) {
+  _impactMineral(ctx, col, tint) {
     const { p, n } = ctx; const ps = this.particles;
-    ps.spawn({ pos: p.clone().addScaledVector(n, 0.03), size: 0.1, tile: P.FLARE, color: [2.5, 2.0, 1.4], life: 0.04, additive: 1, fadeIn: 0, rot: this.r(0, 6.28) });
+    ps.spawn({ pos: p.clone().addScaledVector(n, 0.03), size: 0.07, tile: P.FLARE, color: [1.6, 1.3, 0.9], life: 0.035, additive: 1, fadeIn: 0, rot: this.r(0, 6.28) });
     this._jet(ctx, col);
-    this._dust(ctx, col);
-    // slow lingering cloud
-    this._dust(ctx, col, { count: 2, speed: [0.3, 0.8], size: [0.15, 0.25], size1: [0.9, 1.3], life: [1.6, 2.8], alpha: [0.07, 0.12], spread: 0.6, bias: 0 });
-    // grit sprite burst (reads as a spray of chips)
-    ps.spawn({ pos: p.clone().addScaledVector(n, 0.03), vel: n.clone().multiplyScalar(2.2), drag: 5, size: 0.06, size1: 0.4, tile: P.GRIT, color: col.map((c) => c * 0.45), lit: 1, alpha: 0.6, life: 0.35, fadeIn: 0, fadeOut: 0.6, rot: this.r(0, 6.28) });
-    this._grit(ctx, col.map((c) => c * 0.8 * dark), 16);
-    this._chunks(ctx, col, 4);
-    this.decals.add(p, n, decal, this.r(0.15, 0.2));
+    // short puff that hangs briefly, then a faint haze
+    this._dust(ctx, col, { count: 4, speed: [1.5, 4.5], size: [0.05, 0.08], size1: [0.3, 0.6], life: [0.45, 0.9], alpha: [0.2, 0.33], bias: 0.45 });
+    this._dust(ctx, col, { count: 1, speed: [0.3, 0.6], size: [0.12, 0.18], size1: [0.6, 0.9], life: [1.2, 1.8], alpha: [0.05, 0.08], spread: 0.6, bias: 0 });
+    // dark grit + chips thrown along the ricochet cone
+    this._grit(ctx, col.map((c) => c * 0.35), 22, { speed: [4, 11], size: [0.01, 0.02], spread: 0.6 });
+    this._chunks(ctx, col.map((c) => c * 0.8), 5, { size: [0.005, 0.014], speed: [2.5, 6], spread: 0.6 });
+    const tiles = [D.CONCRETE0, D.CONCRETE1, D.PLASTER, D.BRICK];
+    const k = this.r(0.95, 1.05);
+    this.decals.add(p, n, tiles[Math.floor(this.rand() * 4)], 0.13 * this.r(0.6, 1.4), { tint: tint.map((t) => t * k) });
   }
 
   _impactMetal(ctx) {
-    const { p, n, refl, floorY, plane } = ctx; const ps = this.particles;
-    ps.spawn({ pos: p.clone().addScaledVector(n, 0.02), size: 0.2, tile: P.GLOW, color: [7, 4, 1.8], life: 0.05, additive: 1, fadeIn: 0 });
-    ps.spawn({ pos: p.clone().addScaledVector(n, 0.02), size: 0.4, tile: P.FLARE, color: [6, 3.8, 1.8], life: 0.06, additive: 1, fadeIn: 0, rot: this.r(0, 6.28) });
-    ps.spawn({ pos: p.clone().addScaledVector(n, 0.005), mode: 2, axis: n, size: 0.05, tile: P.GLOW, color: [3, 1.0, 0.2], life: 0.5, additive: 1, fadeIn: 0, fadeOut: 0.9 }); // hot spot
-    const base = refl.clone().multiplyScalar(0.7).addScaledVector(n, 0.5).normalize();
-    for (let i = 0; i < 22 * this.q; i++) {
-      const v = this.cone(base, 0.6, new THREE.Vector3()).multiplyScalar(this.r(3, 14));
-      const long = this.rand() < 0.25;
-      ps.spawn({ pos: p.clone().addScaledVector(n, 0.01), vel: v, gravity: 9.8, drag: long ? 0.6 : 1.4, mode: 1, stretch: 0.035, size: this.r(0.007, 0.014), minPx: 2,
-        tile: P.SPARK, color: [16, 8, 2.4], color1: [3, 0.55, 0.06], life: long ? this.r(0.6, 1.1) : this.r(0.15, 0.5), additive: 1, anchor: -1, fadeIn: 0, fadeOut: 0.35, floorY, rest: 0.45 });
+    const { p, n, refl, floorY } = ctx; const ps = this.particles;
+    ps.spawn({ pos: p.clone().addScaledVector(n, 0.02), size: 0.12, tile: P.GLOW, color: [6, 3.6, 1.6], life: 0.04, additive: 1, fadeIn: 0 });
+    ps.spawn({ pos: p.clone().addScaledVector(n, 0.02), size: 0.22, tile: P.FLARE, color: [5, 3.2, 1.5], life: 0.04, additive: 1, fadeIn: 0, rot: this.r(0, 6.28) });
+    ps.spawn({ pos: p.clone().addScaledVector(n, 0.004), mode: 2, axis: n, size: 0.035, tile: P.GLOW, color: [2.5, 0.8, 0.15], life: 0.35, additive: 1, fadeIn: 0, fadeOut: 0.9 }); // glowing hot spot
+    const base = refl.clone().multiplyScalar(0.8).addScaledVector(n, 0.35).normalize();
+    const cnt = Math.round(this.r(8, 15) * this.q);
+    for (let i = 0; i < cnt; i++) {
+      const v = this.cone(base, 0.45, new THREE.Vector3()).multiplyScalar(this.r(3, 9));
+      const long = i < 2;
+      ps.spawn({ pos: p.clone().addScaledVector(n, 0.01), vel: v, gravity: 9.8, drag: 1.5, mode: 1, stretch: 0.018, size: this.r(0.006, 0.011), minPx: 1.6,
+        tile: P.SPARK, color: [14, 7, 2], color1: [3, 0.5, 0.05], life: long ? this.r(0.35, 0.6) : this.r(0.07, 0.22), additive: 1, anchor: -1, fadeIn: 0, fadeOut: 0.4, floorY, rest: 0.4 });
     }
-    this._dust(ctx, [0.42, 0.41, 0.4], { count: 2, speed: [0.8, 2], size: [0.04, 0.06], size1: [0.25, 0.45], life: [0.6, 1.2], alpha: [0.25, 0.35] });
-    this._chunks(ctx, [0.28, 0.3, 0.27], 2, { size: [0.004, 0.008] });
-    this.decals.add(p, n, this.rand() < 0.5 ? D.METAL0 : D.METAL1, this.r(0.09, 0.12));
-    void plane;
+    this._chunks(ctx, [0.22, 0.24, 0.21], 2, { size: [0.003, 0.006] });
+    this.decals.add(p, n, this.rand() < 0.5 ? D.METAL0 : D.METAL1, 0.095 * this.r(0.7, 1.3));
   }
 
   _impactWood(ctx) {
@@ -388,53 +408,47 @@ export class EffectsSystem {
     const plane = new THREE.Vector4(0, 1, 0, -ground);
     const c = new THREE.Vector3(pos.x, Math.max(pos.y, ground) + 0.15, pos.z);
     this.sunVis = this.sunVisibility(c.clone().addScaledVector(UP, 2));
+    const fc = c.clone().addScaledVector(UP, 0.55 * S); // fireball centre sits above the ground
     // flash
-    ps.spawn({ pos: c.clone().addScaledVector(UP, 0.6), size: 7 * S, tile: P.GLOW, color: [14, 9, 5], life: 0.12, additive: 1, fadeIn: 0, fadeOut: 0.9 });
-    ps.spawn({ pos: c.clone().addScaledVector(UP, 0.6), size: 3 * S, tile: P.CORE, color: [20, 14, 8], life: 0.07, additive: 1, fadeIn: 0 });
-    // fireball
-    for (let i = 0; i < 22 * q; i++) {
-      const dir = this.unit(new THREE.Vector3()); dir.y = Math.abs(dir.y) * 1.3 + 0.15; dir.normalize();
-      const sp = this.r(3, 11) * S;
-      ps.spawn({ pos: c.clone().addScaledVector(dir, this.r(0.1, 0.5) * S), vel: dir.multiplyScalar(sp), drag: 5.5, buoy: 2.5, size: this.r(0.8, 1.4) * S, size1: this.r(2.8, 4.4) * S, sizePow: 3,
-        tile: P.FIRE, color: [0.16, 0.14, 0.13], lit: 1, alpha: 1, life: this.r(0.8, 1.4), heat: this.r(0.7, 1.5), heat1: 0, heatPow: 1.4, emissive: 1.15,
-        rot: this.r(0, 6.28), rotVel: this.r(-1.5, 1.5), fadeIn: 0, fadeOut: 0.5, erode: 0.0, erode1: 0.6, plane, soft: 0.5 });
+    ps.spawn({ pos: fc.clone(), size: 7 * S, tile: P.GLOW, color: [10, 6.5, 3.5], life: 0.1, additive: 1, fadeIn: 0, fadeOut: 0.9 });
+    ps.spawn({ pos: fc.clone(), size: 2.6 * S, tile: P.CORE, color: [16, 11, 6], life: 0.06, additive: 1, fadeIn: 0 });
+    // fireball: temperature-ramped billows (darker, cooler edges) interleaved with soot
+    for (let i = 0; i < 18 * q; i++) {
+      const dir = this.unit(new THREE.Vector3()); dir.y = Math.abs(dir.y) * 1.1 + 0.1; dir.normalize();
+      const sp = this.r(3, 10) * S;
+      ps.spawn({ pos: fc.clone().addScaledVector(dir, this.r(0.1, 0.5) * S), vel: dir.multiplyScalar(sp), drag: 6, buoy: 2.2, size: this.r(0.7, 1.2) * S, size1: this.r(2.2, 3.4) * S, sizePow: 3,
+        tile: P.FIRE, color: [0.09, 0.08, 0.075], lit: 1, alpha: 1, life: this.r(0.6, 1.1), heat: this.r(0.8, 1.45), heat1: 0, heatPow: 1.2, emissive: 1.1,
+        rot: this.r(0, 6.28), rotVel: this.r(-1.5, 1.5), fadeIn: 0, fadeOut: 0.5, erode: 0.0, erode1: 0.6 });
     }
-    // inner blinding core billows
-    for (let i = 0; i < 6 * q; i++) {
-      const dir = this.unit(new THREE.Vector3()); dir.y = Math.abs(dir.y) + 0.3; dir.normalize();
-      ps.spawn({ pos: c.clone().addScaledVector(dir, 0.3 * S), vel: dir.multiplyScalar(this.r(2, 5) * S), drag: 6, size: 1.2 * S, size1: 3.2 * S, tile: P.FIRE, color: [0.1, 0.1, 0.1], lit: 0.3,
-        life: this.r(0.25, 0.4), heat: 1.6, heat1: 0.6, emissive: 1.4, additive: 0.6, rot: this.r(0, 6.28), fadeIn: 0, fadeOut: 0.6, plane, soft: 0.4 });
-    }
-    // dark sooty smoke wrapped around the fireball (contrast)
-    for (let i = 0; i < 12 * q; i++) {
-      const dir = this.unit(new THREE.Vector3()); dir.y = Math.abs(dir.y) * 1.2 + 0.25; dir.normalize();
-      ps.spawn({ pos: c.clone().addScaledVector(dir, this.r(0.4, 1.0) * S), vel: dir.multiplyScalar(this.r(3, 8) * S), drag: 4.5, buoy: 1.2, size: 1.0 * S, size1: this.r(3, 4.5) * S, sizePow: 2.5,
-        tile: [P.SMOKE0, P.SMOKE1][i % 2], color: [0.07, 0.065, 0.06], color1: [0.16, 0.155, 0.15], lit: 1, alpha: 0.9, life: this.r(3, 5), rot: this.r(0, 6.28), rotVel: this.r(-0.4, 0.4),
-        fadeIn: 0.02, fadeOut: 0.6, erode: 0, erode1: 0.5, plane, soft: 0.5, turb: 0.4 });
+    for (let i = 0; i < 10 * q; i++) { // soot interleaved through the fireball
+      const dir = this.unit(new THREE.Vector3()); dir.y = Math.abs(dir.y) + 0.15; dir.normalize();
+      ps.spawn({ pos: fc.clone().addScaledVector(dir, this.r(0.3, 0.9) * S), vel: dir.multiplyScalar(this.r(3, 8) * S), drag: 5, buoy: 1.4, size: 0.9 * S, size1: this.r(2.6, 3.8) * S, sizePow: 2.6,
+        tile: [P.SMOKE0, P.SMOKE1][i % 2], color: [0.035, 0.032, 0.03], color1: [0.09, 0.087, 0.084], lit: 1, alpha: 0.95, life: this.r(3.5, 5.5), rot: this.r(0, 6.28), rotVel: this.r(-0.4, 0.4),
+        fadeIn: 0.03, fadeOut: 0.6, erode: 0, erode1: 0.5, turb: 0.4 });
     }
     // upward dirt/debris column (streaked dust jets)
     for (let i = 0; i < 10 * q; i++) {
       const dir = this.cone(UP, 0.5, new THREE.Vector3());
       ps.spawn({ pos: c.clone(), vel: dir.multiplyScalar(this.r(8, 16) * S), drag: 3.5, gravity: 3, mode: 1, stretch: 0.12, anchor: -1, size: 0.3 * S, size1: this.r(1.0, 1.6) * S,
-        tile: P.SMOKE2, color: [0.3, 0.26, 0.21], lit: 1, alpha: 0.8, life: this.r(0.8, 1.4), fadeIn: 0, fadeOut: 0.7, erode: 0.05, erode1: 0.6, plane, soft: 0.4 });
+        tile: P.SMOKE2, color: [0.26, 0.23, 0.19], lit: 1, alpha: 0.8, life: this.r(0.8, 1.4), fadeIn: 0, fadeOut: 0.7, erode: 0.05, erode1: 0.6 });
     }
-    // shockwave ring on ground + air ring
-    ps.spawn({ pos: new THREE.Vector3(c.x, ground + 0.08, c.z), mode: 2, axis: UP, size: 1 * S, size1: 18 * S, sizePow: 2.5, tile: P.RING, color: [0.3, 0.27, 0.23], lit: 0.6, alpha: 0.35, life: 0.45, fadeIn: 0, fadeOut: 0.9 });
-    ps.spawn({ pos: c.clone().addScaledVector(UP, 0.8), size: 1 * S, size1: 12 * S, sizePow: 1.6, tile: P.RING, color: [1.2, 1.1, 1.0], additive: 1, alpha: 0.35, life: 0.18, fadeIn: 0, fadeOut: 0.9 });
-    // ground dust skirt
-    for (let i = 0; i < 18 * q; i++) {
-      const a = this.r(0, 6.28); const dir = new THREE.Vector3(Math.cos(a), this.r(0.02, 0.2), Math.sin(a));
-      ps.spawn({ pos: new THREE.Vector3(c.x, ground + 0.3, c.z).addScaledVector(dir, 0.5 * S), vel: dir.multiplyScalar(this.r(7, 14) * S), drag: 3.2, size: 0.6 * S, size1: this.r(2.5, 4.5) * S, sizePow: 2.5,
-        tile: [P.DUST, P.SMOKE0, P.SMOKE1][i % 3], color: [0.5, 0.45, 0.38], lit: 1, alpha: this.r(0.5, 0.75), life: this.r(2.5, 4.5), buoy: 0.35, turb: 0.4,
+    // shockwave: faint ground ring
+    ps.spawn({ pos: new THREE.Vector3(c.x, ground + 0.08, c.z), mode: 2, axis: UP, size: 1 * S, size1: 16 * S, sizePow: 2.5, tile: P.RING, color: [0.3, 0.27, 0.23], lit: 0.6, alpha: 0.3, life: 0.4, fadeIn: 0, fadeOut: 0.9 });
+    // low, wide tan dust skirt
+    for (let i = 0; i < 20 * q; i++) {
+      const a = this.r(0, 6.28); const dir = new THREE.Vector3(Math.cos(a), this.r(0.0, 0.12), Math.sin(a));
+      ps.spawn({ pos: new THREE.Vector3(c.x, ground + 0.35, c.z).addScaledVector(dir, 0.6 * S), vel: dir.multiplyScalar(this.r(7, 15) * S), drag: 3.0, size: 0.7 * S, size1: this.r(2.6, 4.2) * S, sizePow: 2.5,
+        tile: [P.DUST, P.SMOKE0, P.SMOKE1][i % 3], color: [0.52, 0.46, 0.37], lit: 1, alpha: this.r(0.5, 0.75), life: this.r(3, 5), buoy: 0.12, turb: 0.4,
         rot: this.r(0, 6.28), rotVel: this.r(-0.5, 0.5), fadeIn: 0.02, fadeOut: 0.75, erode: 0, erode1: 0.55, plane, soft: 0.6 });
     }
-    // smoke plume (rises, darker core)
-    for (let i = 0; i < 30 * q; i++) {
-      const dir = this.unit(new THREE.Vector3()); dir.y = Math.abs(dir.y) * 2 + 0.6; dir.normalize();
-      const g = this.r(0.1, 0.2);
-      ps.spawn({ pos: c.clone().addScaledVector(dir, this.r(0.2, 1.0) * S), vel: dir.multiplyScalar(this.r(1.2, 3.5) * S), drag: 1.6, buoy: 0.55, delay: this.r(0.02, 0.25),
-        size: 1.0 * S, size1: this.r(4, 6.5) * S, sizePow: 1.7, tile: [P.SMOKE0, P.SMOKE1, P.SMOKE2][i % 3], color: [g, g * 0.97, g * 0.94], color1: [g * 2.2, g * 2.15, g * 2.1], lit: 1,
-        alpha: this.r(0.75, 0.95), life: this.r(5, 9), turb: 0.6, rot: this.r(0, 6.28), rotVel: this.r(-0.25, 0.25), fadeIn: 0.03, fadeOut: 0.6, erode: 0, erode1: 0.5, plane, soft: 0.8 });
+    // dark rising core column (grey-black, lightening as it cools and thins)
+    for (let i = 0; i < 18 * q; i++) {
+      const h = this.r(0, 1);
+      const off = this.unit(new THREE.Vector3()).multiplyScalar(this.r(0, 0.5) * S); off.y = 0;
+      const g = this.r(0.05, 0.1);
+      ps.spawn({ pos: fc.clone().add(off).addScaledVector(UP, h * 1.2 * S), vel: new THREE.Vector3(off.x, 0, off.z).multiplyScalar(1.2).addScaledVector(UP, this.r(2.5, 5) * S * (0.6 + h)), drag: 1.3, buoy: 0.7, delay: this.r(0.05, 0.3),
+        size: 1.1 * S, size1: this.r(3.2, 5) * S, sizePow: 1.8, tile: [P.SMOKE0, P.SMOKE1, P.SMOKE2][i % 3], color: [g, g * 0.97, g * 0.94], color1: [g * 2.4, g * 2.35, g * 2.3], lit: 1,
+        alpha: this.r(0.8, 0.95), life: this.r(6, 10), turb: 0.5, rot: this.r(0, 6.28), rotVel: this.r(-0.25, 0.25), fadeIn: 0.03, fadeOut: 0.55, erode: 0, erode1: 0.5 });
     }
     // sparks / burning fragments
     for (let i = 0; i < 45 * q; i++) {
@@ -457,9 +471,11 @@ export class EffectsSystem {
         trail: i < 8 ? { fn: trailFn, interval: 0.035, duration: this.r(0.5, 1.1) } : null });
     }
     // scorch decal
-    if (floorY > -1e8) this.decals.add(new THREE.Vector3(c.x, ground, c.z), UP, D.SCORCH, this.r(3.4, 4.2) * S, { check: false, offset: 0.004 });
+    if (floorY > -1e8) this.decals.add(new THREE.Vector3(c.x, ground, c.z), UP, D.SCORCH, this.r(3.8, 4.6) * S, { check: false, offset: 0.01 });
     // light
-    this._worldLight(c.clone().addScaledVector(UP, 1.0), 900 * S, 0.28, 10);
+    this._worldLight(c.clone().addScaledVector(UP, 0.7), 700 * S, 0.3, 10); // fireball light + ground bounce
+    const camD = this.game.camera.position.distanceTo(c);
+    if (camD < 40) this.game.post?.flash?.(Math.min(0.45, 6 / Math.max(6, camD)) * S, 16); // 2-3 frame screen flash
     this.sunVis = 1;
     this.game.events.emit('fx:explosion', { position: c.clone() });
   }
@@ -545,5 +561,6 @@ export class EffectsSystem {
     U.uFlash2Pos.value.copy(this.lightB.position); U.uFlash2Color.value.copy(this.lightB.color).multiplyScalar(this.lightB.intensity * 0.35);
     this.debris.update(dt, sim);
     this.particles.update(dt, sim);
+    this.vmParticles.update(dt, sim);
   }
 }
